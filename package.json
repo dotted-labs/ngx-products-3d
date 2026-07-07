@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "ng": "ng",
-    "start": "ng serve products-3d-playground",
+    "start:playground": "ng serve products-3d-playground",
     "build": "ng build ngx-products-3d",
     "build:lib": "ng build ngx-products-3d",
     "watch": "ng build ngx-products-3d --watch --configuration development",
