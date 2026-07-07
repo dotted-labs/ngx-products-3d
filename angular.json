@@ -31,7 +31,18 @@
         "test": {
           "builder": "@angular/build:unit-test",
           "options": {
-            "tsConfig": "projects/ngx-products-3d/tsconfig.spec.json"
+            "tsConfig": "projects/ngx-products-3d/tsconfig.spec.json",
+            "runner": "vitest"
+          }
+        },
+        "lint": {
+          "builder": "@angular-eslint/builder:lint",
+          "options": {
+            "lintFilePatterns": [
+              "projects/ngx-products-3d/**/*.ts",
+              "projects/ngx-products-3d/**/*.html"
+            ],
+            "eslintConfig": "projects/ngx-products-3d/eslint.config.js"
           }
         }
       }
@@ -54,7 +65,9 @@
                 "input": "projects/products-3d-playground/public"
               }
             ],
-            "styles": ["projects/products-3d-playground/src/styles.css"]
+            "styles": [
+              "projects/products-3d-playground/src/styles.css"
+            ]
           },
           "configurations": {
             "production": {
@@ -93,7 +106,21 @@
           "defaultConfiguration": "development"
         },
         "test": {
-          "builder": "@angular/build:unit-test"
+          "builder": "@angular/build:unit-test",
+          "options": {
+            "tsConfig": "projects/products-3d-playground/tsconfig.spec.json",
+            "runner": "vitest"
+          }
+        },
+        "lint": {
+          "builder": "@angular-eslint/builder:lint",
+          "options": {
+            "lintFilePatterns": [
+              "projects/products-3d-playground/**/*.ts",
+              "projects/products-3d-playground/**/*.html"
+            ],
+            "eslintConfig": "projects/products-3d-playground/eslint.config.js"
+          }
         }
       }
     }

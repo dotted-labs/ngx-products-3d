@@ -1,0 +1,24 @@
+{
+  "project": "ngx-products-3d",
+  "description": "Productos 3D interactivos para Angular (Angular Three v4).",
+  "rules": {
+    "one_feature_at_a_time": true,
+    "require_tests_to_close": true,
+    "valid_status": ["pending", "in_progress", "done", "blocked"]
+  },
+  "features": [
+    {
+      "id": 1,
+      "name": "placeholder",
+      "title": "Placeholder — reemplazar por feature real",
+      "description": "Entrada de ejemplo. Sustituir por la primera feature real del roadmap cuando se defina.",
+      "acceptance": [
+        "pnpm build termina sin errores",
+        "pnpm ng lint ngx-products-3d termina sin errores",
+        "pnpm ng test ngx-products-3d muestra > 0 tests y todos verdes",
+        "Reemplazar esta entrada por la feature real con criterios de aceptación concretos"
+      ],
+      "status": "pending"
+    }
+  ]
+}
