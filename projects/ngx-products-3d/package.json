@@ -1,0 +1,37 @@
+{
+  "name": "@dotted-labs/ngx-products-3d",
+  "version": "0.1.0",
+  "description": "Productos 3D interactivos para Angular (Angular Three v4)",
+  "license": "MIT",
+  "sideEffects": false,
+  "keywords": ["angular", "angular-three", "threejs", "rapier", "3d", "badge"],
+  "author": {
+    "name": "Dotted Labs",
+    "url": "https://github.com/dotted-labs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dotted-labs/ngx-products-3d"
+  },
+  "homepage": "https://github.com/dotted-labs/ngx-products-3d",
+  "bugs": {
+    "url": "https://github.com/dotted-labs/ngx-products-3d/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "@angular/common": "^21.0.0",
+    "@angular/core": "^21.0.0",
+    "angular-three": "^4.0.0",
+    "angular-three-soba": "^4.0.0",
+    "angular-three-rapier": "^4.0.0",
+    "@dimforge/rapier3d-compat": ">=0.14.0",
+    "three": ">=0.174.0",
+    "meshline": "^3.0.0",
+    "ngxtension": ">=5.0.0"
+  },
+  "dependencies": {
+    "tslib": "^2.3.0"
+  }
+}

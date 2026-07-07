@@ -1,0 +1,54 @@
+{
+  "name": "ngx-products-3d",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "ng": "ng",
+    "start": "ng serve products-3d-playground",
+    "build": "ng build ngx-products-3d",
+    "build:lib": "ng build ngx-products-3d",
+    "watch": "ng build ngx-products-3d --watch --configuration development",
+    "test": "ng test"
+  },
+  "prettier": {
+    "printWidth": 100,
+    "singleQuote": true,
+    "useTabs": true,
+    "overrides": [
+      {
+        "files": "*.html",
+        "options": {
+          "parser": "angular"
+        }
+      }
+    ]
+  },
+  "packageManager": "npm@10.9.3",
+  "dependencies": {
+    "@angular/common": "^21.1.0",
+    "@angular/compiler": "^21.1.0",
+    "@angular/core": "^21.1.0",
+    "@angular/forms": "^21.1.0",
+    "@angular/platform-browser": "^21.1.0",
+    "@angular/router": "^21.1.0",
+    "@dimforge/rapier3d-compat": "^0.19.3",
+    "angular-three": "^4.2.3",
+    "angular-three-rapier": "^4.2.3",
+    "angular-three-soba": "^4.2.3",
+    "meshline": "^3.3.1",
+    "ngxtension": "^7.2.0",
+    "rxjs": "~7.8.0",
+    "three": "^0.182.0",
+    "tslib": "^2.3.0"
+  },
+  "devDependencies": {
+    "@angular/build": "^21.2.18",
+    "@angular/cli": "^21.1.2",
+    "@angular/compiler-cli": "^21.1.0",
+    "@types/three": "^0.182.0",
+    "jsdom": "^28.0.0",
+    "ng-packagr": "^21.2.0",
+    "typescript": "~5.9.2",
+    "vitest": "^4.0.8"
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "compileOnSave": false,
+  "compilerOptions": {
+    "strict": true,
+    "noImplicitOverride": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "experimentalDecorators": true,
+    "paths": {
+      "@dotted-labs/ngx-products-3d": ["./projects/ngx-products-3d/src/public-api.ts"]
+    },
+    "importHelpers": true,
+    "target": "ES2022",
+    "module": "preserve"
+  },
+  "angularCompilerOptions": {
+    "enableI18nLegacyMessageIdFormat": false,
+    "strictInjectionParameters": true,
+    "strictInputAccessModifiers": true,
+    "strictTemplates": true
+  },
+  "files": [],
+  "references": [
+    {
+      "path": "./projects/ngx-products-3d/tsconfig.lib.json"
+    },
+    {
+      "path": "./projects/ngx-products-3d/tsconfig.spec.json"
+    },
+    {
+      "path": "./projects/products-3d-playground/tsconfig.app.json"
+    },
+    {
+      "path": "./projects/products-3d-playground/tsconfig.spec.json"
+    }
+  ]
+}

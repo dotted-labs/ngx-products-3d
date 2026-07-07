@@ -1,0 +1,11 @@
+{
+	"glyphs": {},
+	"familyName": "Demo",
+	"ascender": 800,
+	"descender": -200,
+	"underlinePosition": -100,
+	"underlineThickness": 50,
+	"boundingBox": { "xMin": 0, "yMin": -200, "xMax": 1000, "yMax": 800 },
+	"resolution": 1000,
+	"original_font_information": {}
+}
