@@ -23,7 +23,11 @@ jobs:
       - name: Check for version change
         id: check
         run: |
-          DIFF_RESULT=$(git diff HEAD~1 HEAD -- projects/ngx-products-3d/package.json | grep '"version":' || true)
+          if git rev-parse HEAD~1 >/dev/null 2>&1; then
+            DIFF_RESULT=$(git diff HEAD~1 HEAD -- projects/ngx-products-3d/package.json | grep '"version":' || true)
+          else
+            DIFF_RESULT=$(grep '"version":' projects/ngx-products-3d/package.json || true)
+          fi
           if [ -n "$DIFF_RESULT" ]; then
             VERSION=$(grep '"version":' projects/ngx-products-3d/package.json | sed 's/.*"version": "\(.*\)",/\1/')
             echo "Version changed to: $VERSION"
