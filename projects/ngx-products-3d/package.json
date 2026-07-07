@@ -1,6 +1,6 @@
 {
   "name": "@dotted-labs/ngx-products-3d",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Productos 3D interactivos para Angular (Angular Three v4)",
   "license": "MIT",
   "sideEffects": false,

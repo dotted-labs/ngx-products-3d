@@ -105,9 +105,9 @@ Geometría única para todos los temas. Requisitos:
 ```bash
 git clone https://github.com/dotted-labs/ngx-products-3d.git
 cd ngx-products-3d
-npm install
-npm start                 # playground
-npm run build:lib         # dist/ngx-products-3d
+pnpm install
+pnpm start                 # playground
+pnpm run build:lib         # dist/ngx-products-3d
 ```
 
 ## Licencia

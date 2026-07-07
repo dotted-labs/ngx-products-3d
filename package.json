@@ -23,7 +23,7 @@
       }
     ]
   },
-  "packageManager": "npm@10.9.3",
+  "packageManager": "pnpm@10.10.0",
   "dependencies": {
     "@angular/common": "^21.1.0",
     "@angular/compiler": "^21.1.0",

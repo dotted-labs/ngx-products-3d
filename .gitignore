@@ -9,6 +9,8 @@
 # Node
 /node_modules
 npm-debug.log
+pnpm-debug.log*
+.pnpm-store/
 yarn-error.log
 
 # IDEs and editors

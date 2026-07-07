@@ -6,9 +6,9 @@ We welcome contributions to the ngx-products-3d library.
 
 1. Fork the repository on GitHub.
 2. Clone your fork locally.
-3. Install dependencies: `npm install`
-4. Run the playground: `npm start`
-5. Build the library: `npm run build:lib`
+3. Install dependencies: `pnpm install`
+4. Run the playground: `pnpm start`
+5. Build the library: `pnpm run build:lib`
 
 ### Making Changes
 
