@@ -1,18 +1,23 @@
+import { signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
+import { NGT_STORE, type NgtSize } from 'angular-three';
 import {
 	NgtrPhysics,
 	type NgtrRigidBodyOptions,
 	type NgtrRopeJointParams,
 	type NgtrSphericalJointParams,
 } from 'angular-three-rapier';
+import { Vector2 } from 'three';
 import type { BadgeMemberData, Products3dBadgeTheme } from '../types';
 import { Products3dBadgeScene } from './badge-scene.component';
-import { BADGE_CARD_PLACEHOLDER, BADGE_LAYOUT, BADGE_PHYSICS } from './badge.config';
+import { BADGE_BAND, BADGE_CARD_PLACEHOLDER, BADGE_LAYOUT, BADGE_PHYSICS } from './badge.config';
 
 interface SceneInternals {
 	cardBodyType: () => string;
 	layout: typeof BADGE_LAYOUT;
 	placeholder: typeof BADGE_CARD_PLACEHOLDER;
+	band: typeof BADGE_BAND;
+	resolution: () => Vector2;
 	bodyOptions: Partial<NgtrRigidBodyOptions>;
 	segmentColliderArgs: [number];
 	cardColliderArgs: [number, number, number];
@@ -43,9 +48,21 @@ const PHYSICS_MOCK = {
 	rapier: () => null,
 };
 
+// Mock del store de angular-three (NGT_STORE): expone `size` como signal (alimenta la
+// `resolution` reactiva de la MeshLineMaterial) y `snapshot.internal.subscribe` (usado por
+// `beforeRender`, que aquí devuelve un unsubscribe no-op y nunca invoca el callback de frame).
+const sizeSignal = signal<NgtSize>({ width: 800, height: 600, top: 0, left: 0 });
+const STORE_MOCK = {
+	size: sizeSignal,
+	snapshot: { internal: { subscribe: () => () => undefined } },
+};
+
 function createScene(): ComponentFixture<Products3dBadgeScene> {
 	TestBed.configureTestingModule({
-		providers: [{ provide: NgtrPhysics, useValue: PHYSICS_MOCK }],
+		providers: [
+			{ provide: NgtrPhysics, useValue: PHYSICS_MOCK },
+			{ provide: NGT_STORE, useValue: STORE_MOCK },
+		],
 	});
 	// Template vacío: se testea la derivación de estado desde badge.config,
 	// no el render 3D (requiere canvas + WebGL reales).
@@ -110,5 +127,36 @@ describe('Products3dBadgeScene', () => {
 		expect(internals.layout).toBe(BADGE_LAYOUT);
 		expect(internals.placeholder).toBe(BADGE_CARD_PLACEHOLDER);
 		expect(internals.cardPlaneArgs).toBe(BADGE_CARD_PLACEHOLDER.planeSize);
+	});
+
+	it('exposes the lanyard band material config from BADGE_BAND (no magic numbers)', () => {
+		const fixture = createScene();
+
+		expect(internalsOf(fixture).band).toBe(BADGE_BAND);
+	});
+
+	it('derives band resolution as a Vector2 mirroring the viewport size', () => {
+		sizeSignal.set({ width: 800, height: 600, top: 0, left: 0 });
+		const fixture = createScene();
+
+		const resolution = internalsOf(fixture).resolution();
+
+		expect(resolution).toBeInstanceOf(Vector2);
+		expect(resolution.x).toBe(800);
+		expect(resolution.y).toBe(600);
+	});
+
+	it('reacts to viewport resize reusing the same Vector2 instance', () => {
+		sizeSignal.set({ width: 800, height: 600, top: 0, left: 0 });
+		const fixture = createScene();
+		const internals = internalsOf(fixture);
+		const first = internals.resolution();
+
+		sizeSignal.set({ width: 1280, height: 720, top: 0, left: 0 });
+		const second = internals.resolution();
+
+		expect(second).toBe(first);
+		expect(second.x).toBe(1280);
+		expect(second.y).toBe(720);
 	});
 });

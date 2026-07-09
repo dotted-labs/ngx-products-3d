@@ -37,6 +37,15 @@ export const BADGE_LAYOUT = {
 	cardPosition: [2, 0, 0] as [number, number, number],
 } as const;
 
+/** Correa (lanyard) renderizada por frame con meshline (spec-02 Fase 1) */
+export const BADGE_BAND = {
+	color: 'white',
+	/** Ancho de línea de la correa en unidades de mundo (meshline lineWidth) */
+	lineWidth: 1,
+	/** La correa se dibuja siempre encima; sin test de profundidad para evitar clipping con la tarjeta */
+	depthTest: false,
+} as const;
+
 /** Placeholder plano de la tarjeta (spec-02 Fase 1; se sustituye por el GLB en spec-03) */
 export const BADGE_CARD_PLACEHOLDER = {
 	planeSize: [1.6, 2.25] as [number, number],

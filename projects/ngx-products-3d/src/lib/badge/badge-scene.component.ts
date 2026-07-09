@@ -1,13 +1,15 @@
 import {
 	ChangeDetectionStrategy,
 	Component,
+	computed,
 	CUSTOM_ELEMENTS_SCHEMA,
+	ElementRef,
 	input,
 	signal,
 	viewChild,
 } from '@angular/core';
-import { DoubleSide } from 'three';
-import { NgtArgs } from 'angular-three';
+import { CatmullRomCurve3, DoubleSide, Vector2, Vector3 } from 'three';
+import { beforeRender, extend, injectStore, NgtArgs } from 'angular-three';
 import {
 	NgtrBallCollider,
 	NgtrCuboidCollider,
@@ -19,8 +21,13 @@ import {
 	type NgtrRopeJointParams,
 	type NgtrSphericalJointParams,
 } from 'angular-three-rapier';
+import { MeshLineGeometry, MeshLineMaterial } from 'meshline';
 import type { BadgeMemberData, Products3dBadgeTheme } from '../types';
-import { BADGE_CARD_PLACEHOLDER, BADGE_LAYOUT, BADGE_PHYSICS } from './badge.config';
+import { BADGE_BAND, BADGE_CARD_PLACEHOLDER, BADGE_LAYOUT, BADGE_PHYSICS } from './badge.config';
+
+// Registra los elementos custom de meshline (<ngt-mesh-line-geometry>,
+// <ngt-mesh-line-material>) en el catálogo del renderer. Idempotente a nivel de módulo.
+extend({ MeshLineGeometry, MeshLineMaterial });
 
 /**
  * Escena física del badge: cadena fixed→j1→j2→j3 (rope joints) de la que
@@ -73,6 +80,16 @@ import { BADGE_CARD_PLACEHOLDER, BADGE_LAYOUT, BADGE_PHYSICS } from './badge.con
 				/>
 			</ngt-mesh>
 		</ngt-object3D>
+		<!-- Correa (lanyard): curva Catmull-Rom recalculada por frame en beforeRender -->
+		<ngt-mesh>
+			<ngt-mesh-line-geometry #bandGeometry />
+			<ngt-mesh-line-material
+				[color]="band.color"
+				[resolution]="resolution()"
+				[lineWidth]="band.lineWidth"
+				[depthTest]="band.depthTest"
+			/>
+		</ngt-mesh>
 	`,
 	imports: [NgtArgs, NgtrRigidBody, NgtrBallCollider, NgtrCuboidCollider],
 	schemas: [CUSTOM_ELEMENTS_SCHEMA],
@@ -89,6 +106,10 @@ export class Products3dBadgeScene {
 	private readonly j3Body = viewChild.required('j3Body', { read: NgtrRigidBody });
 	private readonly cardBody = viewChild.required('cardBody', { read: NgtrRigidBody });
 
+	// nativeElement ES la instancia MeshLineGeometry (el renderer v4 auto-attachea
+	// la BufferGeometry a mesh.geometry); ver docs/spike-notes.md §S2.
+	private readonly bandGeometry = viewChild.required<ElementRef<MeshLineGeometry>>('bandGeometry');
+
 	/**
 	 * 'kinematicPosition' durante el drag (feature badge-drag); 'dynamic' en reposo.
 	 * No se bindea al input rigidBody (race NG0950, ver comentario del template): la feature 6
@@ -98,7 +119,23 @@ export class Products3dBadgeScene {
 
 	protected readonly layout = BADGE_LAYOUT;
 	protected readonly placeholder = BADGE_CARD_PLACEHOLDER;
+	protected readonly band = BADGE_BAND;
 	protected readonly doubleSide = DoubleSide;
+
+	private readonly store = injectStore();
+
+	// Resolución de la MeshLineMaterial = tamaño del viewport, reactivo a resize.
+	// Vector2 reutilizado: el material hace .copy(value), no guarda la referencia.
+	private readonly resolutionVec = new Vector2();
+	protected readonly resolution = computed(() => {
+		const size = this.store.size();
+		return this.resolutionVec.set(size.width, size.height);
+	});
+
+	// Estado de la correa reutilizado (cero allocations por frame): 4 puntos de la
+	// curva, en orden tarjeta→anclaje. curveType 'chordal' se fija una sola vez abajo.
+	private readonly bandPoints = [new Vector3(), new Vector3(), new Vector3(), new Vector3()];
+	private readonly curve = new CatmullRomCurve3(this.bandPoints);
 
 	protected readonly bodyOptions: Partial<NgtrRigidBodyOptions> = {
 		colliders: false,
@@ -122,6 +159,10 @@ export class Products3dBadgeScene {
 	};
 
 	constructor() {
+		// 'chordal' elimina los kinks de la Catmull-Rom sobre segmentos muy separados;
+		// se fija una única vez (invariante de la curva), nunca por frame.
+		this.curve.curveType = 'chordal';
+
 		// Joints creados reactivamente cuando el mundo Rapier y ambos bodies existen;
 		// cleanup automático (removeImpulseJoint) gestionado por angular-three-rapier.
 		ropeJoint(
@@ -144,5 +185,25 @@ export class Products3dBadgeScene {
 			() => this.cardBody().rigidBody(),
 			{ data: this.cardJointData },
 		);
+
+		beforeRender(() => {
+			const fixed = this.fixedBody().rigidBody();
+			const j1 = this.j1Body().rigidBody();
+			const j2 = this.j2Body().rigidBody();
+			const j3 = this.j3Body().rigidBody();
+			// Los rigid bodies no existen hasta que el WASM de Rapier resuelve; sin ellos
+			// no hay traslaciones que muestrear.
+			if (!fixed || !j1 || !j2 || !j3) {
+				return;
+			}
+
+			// Orden tarjeta→anclaje; .copy() sobre los Vector3 ya instanciados (sin new).
+			this.bandPoints[0].copy(j3.translation());
+			this.bandPoints[1].copy(j2.translation());
+			this.bandPoints[2].copy(j1.translation());
+			this.bandPoints[3].copy(fixed.translation());
+
+			this.bandGeometry().nativeElement.setPoints(this.curve.getPoints(BADGE_PHYSICS.curvePoints));
+		});
 	}
 }
