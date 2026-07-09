@@ -8,8 +8,14 @@ export const BADGE_PHYSICS = {
 	timeStep: 1 / 60,
 	/** Longitud de cada rope joint entre segmentos de la correa */
 	segmentLength: 1,
+	/** Anchor local (centro del body) de los rope joints entre segmentos */
+	segmentJointAnchor: [0, 0, 0] as [number, number, number],
 	/** Anchor del spherical joint tarjeta↔último segmento */
 	cardJointAnchor: [0, 1.45, 0] as [number, number, number],
+	/** Radio del ball collider de cada segmento de la correa */
+	segmentColliderRadius: 0.1,
+	/** Half-extents del cuboid collider de la tarjeta */
+	cardColliderHalfExtents: [0.8, 1.125, 0.01] as [number, number, number],
 	/** Damping de la tarjeta */
 	angularDamping: 2,
 	linearDamping: 2,
@@ -20,6 +26,22 @@ export const BADGE_PHYSICS = {
 	spinCorrectionFactor: 0.25,
 	/** Puntos de muestreo de la curva Catmull-Rom para la correa */
 	curvePoints: 32,
+} as const;
+
+/** Posiciones iniciales (coordenadas de mundo) de los cuerpos de la cadena y la tarjeta */
+export const BADGE_LAYOUT = {
+	fixedPosition: [0.5, 4, 0] as [number, number, number],
+	j1Position: [0.5, 3, 0] as [number, number, number],
+	j2Position: [0.5, 2, 0] as [number, number, number],
+	j3Position: [0.5, 1, 0] as [number, number, number],
+	cardPosition: [2, 0, 0] as [number, number, number],
+} as const;
+
+/** Placeholder plano de la tarjeta (spec-02 Fase 1; se sustituye por el GLB en spec-03) */
+export const BADGE_CARD_PLACEHOLDER = {
+	planeSize: [1.6, 2.25] as [number, number],
+	color: 'white',
+	opacity: 0.9,
 } as const;
 
 export const BADGE_TEXTURE = {

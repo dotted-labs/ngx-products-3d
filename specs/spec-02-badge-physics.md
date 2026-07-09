@@ -168,7 +168,7 @@ Vectores (`vec`, `dir`, etc.) = instancias `THREE.Vector3` de clase, reutilizada
 
 (Selector/estructura exacta de `NgtrPhysics` v4: verificar en docs; el snippet de angularthree.org usa `NgtrPhysics` importado con template de contenido.)
 
-- `provideNgtRenderer()` en providers del componente
+- `provideNgtRenderer()` (de `angular-three/dom`): devuelve `EnvironmentProviders` → NO cabe en providers del componente; lo registra el **consumidor** en los providers de la ruta que monta el badge (idealmente lazy), nunca en root. Documentado en README. (Validado en review de feature 3.)
 - Guard SSR: envolver canvas en `@if (isBrowser)` con `isBrowser = isPlatformBrowser(inject(PLATFORM_ID))`
 - Input `debug` (boolean, default false) → passthrough a Physics; playground lo expone como toggle
 

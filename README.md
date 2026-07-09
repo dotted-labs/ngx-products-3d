@@ -18,11 +18,13 @@ Requisitos: Angular ≥21, three ≥0.174.
 ### 1. Providers (ruta que consume el badge, NUNCA root)
 
 ```ts
+import { provideNgtRenderer } from 'angular-three/dom';
 import { provideProducts3d, provideProducts3dBadgeTheme } from '@dotted-labs/ngx-products-3d';
 
 export const badgeRoute: Route = {
 	path: 'membership',
 	providers: [
+		provideNgtRenderer(),
 		provideProducts3d({ cardModelUrl: '/assets/3d/card.glb' }),
 		provideProducts3dBadgeTheme({
 			bandTextureUrl: '/assets/3d/band.jpg',
@@ -62,7 +64,7 @@ member = signal<BadgeMemberData>({ name: 'Sergio', memberNumber: '0042', tier: '
 Reglas:
 
 1. `@defer (on viewport)` u `on interaction` + `@placeholder` con imagen estática → LCP barato.
-2. `provideNgtRenderer()` lo aporta la lib a nivel de componente; no lo declares en root.
+2. `provideNgtRenderer()` (import de `angular-three/dom`) lo registra la app consumidora en los providers de la **ruta** que consume el badge (idealmente lazy, como en el quickstart), nunca en root: devuelve `EnvironmentProviders` y Angular no lo admite en providers de componente, así que la lib no puede aportarlo.
 3. Preload opcional de assets pesados: `<link rel="preload" as="fetch" href="/assets/3d/card.glb" crossorigin>`.
 4. El componente incluye guard `isPlatformBrowser` como cinturón — no sustituye a `@defer`.
 

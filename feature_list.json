@@ -1,6 +1,6 @@
 {
   "project": "ngx-products-3d",
-  "description": "Productos 3D interactivos para Angular (Angular Three v4).",
+  "description": "Productos 3D interactivos para Angular (Angular Three v4). Backlog actual: spec-02 (badge — física, correa y drag). Fuera de alcance hasta spec-03: GLB, texturas, RenderTexture.",
   "rules": {
     "one_feature_at_a_time": true,
     "require_tests_to_close": true,
@@ -9,14 +9,144 @@
   "features": [
     {
       "id": 1,
-      "name": "placeholder",
-      "title": "Placeholder — reemplazar por feature real",
-      "description": "Entrada de ejemplo. Sustituir por la primera feature real del roadmap cuando se defina.",
+      "name": "spike-rapier-joints",
+      "title": "Spike S1 — API de joints en angular-three-rapier@4",
+      "spec": "spec-02",
+      "phase": 0,
+      "depends_on": [],
+      "description": "Verificar si angular-three-rapier@4 expone rope joint y spherical joint (grep en node_modules/angular-three-rapier/*.d.ts). Caso A (existen): documentar firma exacta. Caso B (no existen): implementar wrapper propio en projects/ngx-products-3d/src/lib/badge/joints.ts sobre el mundo Rapier crudo (RAPIER.JointData.rope / RAPIER.JointData.spherical) con effect() que espera a que ambos bodies existan y cleanup vía DestroyRef (world.removeImpulseJoint). Bloqueante para las features 4+.",
       "acceptance": [
+        "docs/spike-notes.md documenta la API confirmada de joints (nativa o wrapper) con firmas exactas",
+        "Si caso B: joints.ts implementado y testeado con dos cubos unidos (rope y spherical)",
         "pnpm build termina sin errores",
         "pnpm ng lint ngx-products-3d termina sin errores",
-        "pnpm ng test ngx-products-3d muestra > 0 tests y todos verdes",
-        "Reemplazar esta entrada por la feature real con criterios de aceptación concretos"
+        "pnpm ng test ngx-products-3d muestra > 0 tests y todos verdes"
+      ],
+      "status": "done"
+    },
+    {
+      "id": 2,
+      "name": "spike-meshline",
+      "title": "Spike S2 — meshline con renderer angular-three v4",
+      "spec": "spec-02",
+      "phase": 0,
+      "depends_on": [],
+      "description": "Verificar que extend({ MeshLineGeometry, MeshLineMaterial }) de meshline funciona con el renderer v4: <ngt-mesh-line-geometry> y <ngt-mesh-line-material> renderizan (CUSTOM_ELEMENTS_SCHEMA) y setPoints() funciona desde beforeRender. Si meshline da fricción con three >=0.174, documentar fallback THREE.TubeGeometry regenerada por frame (peor perf; solo fallback). Bloqueante para la feature 5.",
+      "acceptance": [
+        "docs/spike-notes.md incluye sección meshline: elementos verificados, uso de setPoints() y decisión meshline vs fallback TubeGeometry",
+        "pnpm build termina sin errores",
+        "pnpm ng lint ngx-products-3d termina sin errores",
+        "pnpm ng test ngx-products-3d muestra > 0 tests y todos verdes"
+      ],
+      "status": "done"
+    },
+    {
+      "id": 3,
+      "name": "badge-canvas-wrapper",
+      "title": "Canvas wrapper con física en badge.component.ts",
+      "spec": "spec-02",
+      "phase": 1,
+      "depends_on": [1],
+      "description": "Sustituir el stub de badge.component.ts por <ngt-canvas> con camera BADGE_CAMERA + NgtrPhysics con options { gravity: BADGE_PHYSICS.gravity, timeStep: BADGE_PHYSICS.timeStep, interpolate: true, debug: debug() } envolviendo products-3d-badge-scene (verificar selector/estructura exacta de NgtrPhysics v4 en docs de angularthree.org). provideNgtRenderer() (EnvironmentProviders): lo registra el consumidor en los providers de la ruta que monta el badge, no cabe en providers de componente (validado en review). Guard SSR: canvas envuelto en @if (isBrowser) con isPlatformBrowser(inject(PLATFORM_ID)). Input debug (boolean, default false) como passthrough a Physics.",
+      "acceptance": [
+        "Canvas y escena montan en browser (playground)",
+        "Montado en entorno server no toca document ni canvas (guard SSR)",
+        "Input debug llega a NgtrPhysics y activa el debug de física",
+        "Sin dependencia de Zone.js (zoneless-safe)",
+        "pnpm build termina sin errores",
+        "pnpm ng lint ngx-products-3d termina sin errores",
+        "pnpm ng test ngx-products-3d muestra > 0 tests y todos verdes"
+      ],
+      "status": "done"
+    },
+    {
+      "id": 4,
+      "name": "badge-physics-chain",
+      "title": "Cadena física: bodies, colliders y joints en badge-scene.component.ts",
+      "spec": "spec-02",
+      "phase": 1,
+      "depends_on": [1, 3],
+      "description": "Escena con cuerpos: fixed (fixed, [0.5,4,0], sin collider), j1/j2/j3 (dynamic, [0.5,3..1,0], ball collider ~0.1), card (dynamic ↔ kinematicPosition vía signal cardBodyType, [2,0,0], cuboid [0.8,1.125,0.01]). Todos con angularDamping/linearDamping de BADGE_PHYSICS y colliders: false (colliders explícitos). Joints: rope fixed↔j1, j1↔j2, j2↔j3 (anchors [0,0,0], longitud BADGE_PHYSICS.segmentLength) y spherical j3↔card (anchor en card = BADGE_PHYSICS.cardJointAnchor). Card con mesh placeholder: plane-geometry [1.6, 2.25] + mesh-basic-material blanco transparent opacity 0.9 DoubleSide.",
+      "acceptance": [
+        "El plano placeholder cuelga de la cadena y oscila con gravedad al montar la escena",
+        "Damping, longitudes y anchors salen de BADGE_PHYSICS; cero números mágicos en el componente",
+        "pnpm build termina sin errores",
+        "pnpm ng lint ngx-products-3d termina sin errores",
+        "pnpm ng test ngx-products-3d muestra > 0 tests y todos verdes"
+      ],
+      "status": "done"
+    },
+    {
+      "id": 5,
+      "name": "badge-band-rendering",
+      "title": "Correa renderizada por frame con meshline",
+      "spec": "spec-02",
+      "phase": 1,
+      "depends_on": [2, 4],
+      "description": "Correa: THREE.CatmullRomCurve3 con 4 Vector3 reutilizados (sin allocations por frame), curveType 'chordal' fijado una vez. En beforeRender: copiar traslaciones de j3, j2, j1, fixed a los puntos de la curva (orden tarjeta→anclaje) y bandGeometry.setPoints(curve.getPoints(BADGE_PHYSICS.curvePoints)). Material mesh-line: color white, lineWidth 1, depthTest false, resolution = tamaño del viewport obtenido del store de angular-three (reactivo a resize).",
+      "acceptance": [
+        "Correa blanca curva suave (32 puntos) visible siguiendo la cadena en movimiento",
+        "Sin allocations por frame: Vector3 y curva reutilizados (verificar con profiler: sin GC spikes)",
+        "resolution de la material se actualiza al redimensionar el viewport",
+        "pnpm build termina sin errores",
+        "pnpm ng lint ngx-products-3d termina sin errores",
+        "pnpm ng test ngx-products-3d muestra > 0 tests y todos verdes"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": 6,
+      "name": "badge-drag",
+      "title": "Drag de la tarjeta con puntero",
+      "spec": "spec-02",
+      "phase": 1,
+      "depends_on": [4],
+      "description": "onPointerDown: setPointerCapture(event.pointerId), calcular offset event.point − card.translation() y guardarlo en signal dragged, cardBodyType.set('kinematicPosition'). En beforeRender si dragged(): unproject del puntero a posición mundo (vec.set(pointer.x, pointer.y, 0.5).unproject(camera); dir = vec − camera.position normalizado; vec += dir * camera.position.length()), wakeUp() de card, j1, j2, j3, y card.setNextKinematicTranslation(vec − dragOffset). onPointerUp: release capture, dragged.set(false), cardBodyType.set('dynamic'). Todos los vectores (vec, dir, …) instancias THREE.Vector3 de clase reutilizadas.",
+      "acceptance": [
+        "La tarjeta sigue al puntero durante el drag y la cadena reacciona",
+        "Al soltar, la tarjeta cae y oscila (vuelve a dynamic) — hito Fase 1 completo",
+        "Pointer capture activo durante el drag y liberado al soltar",
+        "Sin allocations por frame en el path de drag",
+        "pnpm build termina sin errores",
+        "pnpm ng lint ngx-products-3d termina sin errores",
+        "pnpm ng test ngx-products-3d muestra > 0 tests y todos verdes"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": 7,
+      "name": "badge-anti-jitter-spin",
+      "title": "Estabilización: anti-jitter (lerp) y anti-giro",
+      "spec": "spec-02",
+      "phase": 2,
+      "depends_on": [5, 6],
+      "description": "Anti-jitter: j1Lerped/j2Lerped (Vector3) actualizados en beforeRender con lerp(body.translation(), delta * (minSpeed + clampedDistance * (maxSpeed − minSpeed))) donde clampedDistance = clamp(distancia, 0.1, 1); inicializar copia en el primer frame. La curva de la correa pasa a usar j3.translation(), j2Lerped, j1Lerped, fixed.translation(). Anti-giro: en beforeRender cuando NO hay drag, card.setAngvel({ x: ang.x, y: ang.y − rot.y * BADGE_PHYSICS.spinCorrectionFactor, z: ang.z }, true); si con quaternion crudo el eje no corresponde, convertir a Euler antes.",
+      "acceptance": [
+        "Drag agresivo sin jitter visible en la correa",
+        "La tarjeta vuelve a orientación frontal (mira a cámara) tras soltar",
+        "minSpeed, maxSpeed y spinCorrectionFactor leídos de BADGE_PHYSICS",
+        "pnpm build termina sin errores",
+        "pnpm ng lint ngx-products-3d termina sin errores",
+        "pnpm ng test ngx-products-3d muestra > 0 tests y todos verdes"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": 8,
+      "name": "badge-cursor-polish",
+      "title": "Cursor, repaso de config y debug en playground",
+      "spec": "spec-02",
+      "phase": 2,
+      "depends_on": [6],
+      "description": "Effect sobre hovered/dragged que aplica document.body.style.cursor: drag → 'grabbing', hover → 'grab', resto → 'auto'; solo en browser, restaurando en cleanup del effect y en DestroyRef. Repaso final: ningún número mágico en componentes, todo desde badge.config.ts. Exponer toggle de debug física en el playground (Tweakpane opcional solo en playground, nunca dependencia de la lib). Verificar 60fps estables en playground desktop.",
+      "acceptance": [
+        "Cursor correcto en los 3 estados (grabbing/grab/auto) y restaurado al destruir el componente",
+        "Cero números mágicos en componentes; todos los valores desde badge.config.ts",
+        "Toggle de debug física accesible desde el playground",
+        "60fps estables en playground (desktop); zoneless-safe",
+        "pnpm build termina sin errores",
+        "pnpm ng lint ngx-products-3d termina sin errores",
+        "pnpm ng test ngx-products-3d muestra > 0 tests y todos verdes"
       ],
       "status": "pending"
     }

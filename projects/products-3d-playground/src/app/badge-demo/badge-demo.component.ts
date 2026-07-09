@@ -26,8 +26,19 @@ import {
 			padding: 1rem;
 		}
 
+		products-3d-badge,
 		.badge-placeholder {
-			min-height: 12rem;
+			height: 32rem;
+		}
+
+		/* Fondo oscuro: el placeholder blanco de la tarjeta es invisible sobre blanco */
+		products-3d-badge {
+			display: block;
+			background: #1f2937;
+			border-radius: 0.5rem;
+		}
+
+		.badge-placeholder {
 			display: grid;
 			place-items: center;
 			background: #f3f4f6;
