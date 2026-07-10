@@ -1,15 +1,19 @@
+import { isPlatformBrowser } from '@angular/common';
 import {
 	ChangeDetectionStrategy,
 	Component,
 	computed,
 	CUSTOM_ELEMENTS_SCHEMA,
+	DestroyRef,
+	effect,
 	ElementRef,
 	inject,
 	input,
+	PLATFORM_ID,
 	signal,
 	viewChild,
 } from '@angular/core';
-import { CatmullRomCurve3, DoubleSide, Vector2, Vector3 } from 'three';
+import { CatmullRomCurve3, DoubleSide, Euler, Quaternion, Vector2, Vector3 } from 'three';
 import { beforeRender, extend, injectStore, NgtArgs, type NgtThreeEvent } from 'angular-three';
 import {
 	NgtrBallCollider,
@@ -25,7 +29,9 @@ import {
 } from 'angular-three-rapier';
 import { MeshLineGeometry, MeshLineMaterial } from 'meshline';
 import type { BadgeMemberData, Products3dBadgeTheme } from '../types';
+import { cursorFor } from './badge-cursor';
 import { projectPointerToWorld, subtractInto } from './badge-drag';
+import { lerpTowards, spinCorrectedAngvelY } from './badge-stabilize';
 import {
 	BADGE_BAND,
 	BADGE_CARD_PLACEHOLDER,
@@ -79,6 +85,8 @@ extend({ MeshLineGeometry, MeshLineMaterial });
 			[position]="layout.cardPosition"
 			(pointerdown)="onPointerDown($event)"
 			(pointerup)="onPointerUp($event)"
+			(pointerover)="onPointerOver($event)"
+			(pointerout)="onPointerOut($event)"
 		>
 			<ngt-object3D [cuboidCollider]="cardColliderArgs" />
 			<ngt-mesh>
@@ -135,10 +143,18 @@ export class Products3dBadgeScene {
 
 	private readonly store = injectStore();
 	private readonly physics = inject(NgtrPhysics);
+	private readonly destroyRef = inject(DestroyRef);
+
+	// Guard SSR del cursor: solo se toca document en browser. El original se captura una
+	// sola vez para restaurarlo al destruir (no asumir 'auto': el host podría tener otro).
+	private readonly isBrowser = isPlatformBrowser(inject(PLATFORM_ID));
+	private readonly originalCursor = this.isBrowser ? document.body.style.cursor : '';
 
 	// Estado del drag. `dragged` gobierna el path kinemático en beforeRender; los Vector3
 	// se instancian una vez y se reutilizan por frame (cero allocations en el loop de drag).
 	protected readonly dragged = signal(false);
+	// Hover sobre la tarjeta; alimenta el cursor reactivo (grab) fuera del loop 3D.
+	protected readonly hovered = signal(false);
 	private readonly dragOffset = new Vector3();
 	private readonly dragVec = new Vector3();
 	private readonly dragDir = new Vector3();
@@ -155,6 +171,21 @@ export class Products3dBadgeScene {
 	// curva, en orden tarjeta→anclaje. curveType 'chordal' se fija una sola vez abajo.
 	private readonly bandPoints = [new Vector3(), new Vector3(), new Vector3(), new Vector3()];
 	private readonly curve = new CatmullRomCurve3(this.bandPoints);
+
+	// Anti-jitter: posiciones suavizadas (lerp) de los segmentos intermedios que alimentan
+	// la curva de la correa. Se instancian una vez y se inicializan con la traslación real en
+	// el primer frame válido (arrancar en el origen daría un salto). Cero allocations por frame.
+	private readonly j1Lerped = new Vector3();
+	private readonly j2Lerped = new Vector3();
+	private lerpInitialized = false;
+
+	// Anti-giro: quaternion/euler reutilizados para extraer el yaw. El componente y del
+	// quaternion NO es el ángulo de giro alrededor de Y; hay que pasar por Euler (orden 'YXZ'
+	// para que `.y` sea el yaw). `reuseAngvel` evita crear el literal {x,y,z} de setAngvel por
+	// frame (Rapier copia los componentes a un RawVector, no retiene la referencia).
+	private readonly reuseQuat = new Quaternion();
+	private readonly reuseEuler = new Euler(0, 0, 0, 'YXZ');
+	private readonly reuseAngvel = { x: 0, y: 0, z: 0 };
 
 	protected readonly bodyOptions: Partial<NgtrRigidBodyOptions> = {
 		colliders: false,
@@ -182,6 +213,23 @@ export class Products3dBadgeScene {
 		// se fija una única vez (invariante de la curva), nunca por frame.
 		this.curve.curveType = 'chordal';
 
+		// Cursor reactivo (grabbing/grab/auto) por effect sobre las signals de estado, NO por
+		// frame ni allocations en beforeRender. Guard SSR: solo toca document en browser. El
+		// cursor original se restaura en el cleanup del effect (que corre antes de cada
+		// re-ejecución y en destroy) y también en DestroyRef, para no dejar el body con
+		// 'grab'/'grabbing' colgado si el componente muere a mitad de hover/drag.
+		if (this.isBrowser) {
+			effect((onCleanup) => {
+				document.body.style.cursor = cursorFor(this.dragged(), this.hovered());
+				onCleanup(() => {
+					document.body.style.cursor = this.originalCursor;
+				});
+			});
+			this.destroyRef.onDestroy(() => {
+				document.body.style.cursor = this.originalCursor;
+			});
+		}
+
 		// Joints creados reactivamente cuando el mundo Rapier y ambos bodies existen;
 		// cleanup automático (removeImpulseJoint) gestionado por angular-three-rapier.
 		ropeJoint(
@@ -205,7 +253,7 @@ export class Products3dBadgeScene {
 			{ data: this.cardJointData },
 		);
 
-		beforeRender(({ camera, pointer }) => {
+		beforeRender(({ camera, pointer, delta }) => {
 			const fixed = this.fixedBody().rigidBody();
 			const j1 = this.j1Body().rigidBody();
 			const j2 = this.j2Body().rigidBody();
@@ -234,12 +282,54 @@ export class Products3dBadgeScene {
 				j2.wakeUp();
 				j3.wakeUp();
 				card.setNextKinematicTranslation(subtractInto(this.dragVec, this.dragOffset, this.dragVec));
+			} else if (card) {
+				// Anti-giro (solo en reposo, no durante el drag): amortigua el yaw para que la
+				// tarjeta recupere la orientación frontal. rotY = ángulo de Euler en Y (el
+				// componente y del quaternion no es el ángulo); Euler 'YXZ' → `.y` es el yaw.
+				const ang = card.angvel();
+				const rot = card.rotation();
+				this.reuseQuat.set(rot.x, rot.y, rot.z, rot.w);
+				this.reuseEuler.setFromQuaternion(this.reuseQuat);
+				this.reuseAngvel.x = ang.x;
+				this.reuseAngvel.y = spinCorrectedAngvelY(
+					ang.y,
+					this.reuseEuler.y,
+					BADGE_PHYSICS.spinCorrectionFactor,
+				);
+				this.reuseAngvel.z = ang.z;
+				card.setAngvel(this.reuseAngvel, true);
 			}
 
-			// Orden tarjeta→anclaje; .copy() sobre los Vector3 ya instanciados (sin new).
+			// Anti-jitter: el primer frame válido inicializa los lerped con la traslación real;
+			// después se suavizan hacia los segmentos crudos. Alimentan siempre la curva.
+			if (!this.lerpInitialized) {
+				this.j1Lerped.copy(j1.translation());
+				this.j2Lerped.copy(j2.translation());
+				this.lerpInitialized = true;
+			}
+			lerpTowards(
+				j1.translation(),
+				delta,
+				BADGE_PHYSICS.minSpeed,
+				BADGE_PHYSICS.maxSpeed,
+				BADGE_PHYSICS.lerpClampMin,
+				BADGE_PHYSICS.lerpClampMax,
+				this.j1Lerped,
+			);
+			lerpTowards(
+				j2.translation(),
+				delta,
+				BADGE_PHYSICS.minSpeed,
+				BADGE_PHYSICS.maxSpeed,
+				BADGE_PHYSICS.lerpClampMin,
+				BADGE_PHYSICS.lerpClampMax,
+				this.j2Lerped,
+			);
+
+			// Orden tarjeta→anclaje; segmentos intermedios suavizados (anti-jitter).
 			this.bandPoints[0].copy(j3.translation());
-			this.bandPoints[1].copy(j2.translation());
-			this.bandPoints[2].copy(j1.translation());
+			this.bandPoints[1].copy(this.j2Lerped);
+			this.bandPoints[2].copy(this.j1Lerped);
 			this.bandPoints[3].copy(fixed.translation());
 
 			this.bandGeometry().nativeElement.setPoints(this.curve.getPoints(BADGE_PHYSICS.curvePoints));
@@ -280,5 +370,17 @@ export class Products3dBadgeScene {
 			card.setBodyType(rigidBodyType.Dynamic, true);
 		}
 		this.cardBodyType.set('dynamic');
+	}
+
+	/** Puntero entra en la tarjeta: activa el estado hover (cursor 'grab' salvo durante el drag). */
+	protected onPointerOver(event: NgtThreeEvent<PointerEvent>): void {
+		event.stopPropagation();
+		this.hovered.set(true);
+	}
+
+	/** Puntero sale de la tarjeta: desactiva el hover (cursor vuelve a 'auto' si no hay drag). */
+	protected onPointerOut(event: NgtThreeEvent<PointerEvent>): void {
+		event.stopPropagation();
+		this.hovered.set(false);
 	}
 }

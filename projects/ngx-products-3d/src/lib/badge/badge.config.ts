@@ -22,6 +22,14 @@ export const BADGE_PHYSICS = {
 	/** Estabilización anti-jitter (lerp de segmentos intermedios) */
 	minSpeed: 10,
 	maxSpeed: 50,
+	/**
+	 * Rango al que se acota la distancia lerped→body antes de escalar la velocidad
+	 * del lerp. Invariante de física: por debajo de `lerpClampMin` el segmento ya
+	 * está prácticamente encima (no acelerar sobre ruido); por encima de
+	 * `lerpClampMax` se satura para no dar tirones en saltos grandes de la cadena.
+	 */
+	lerpClampMin: 0.1,
+	lerpClampMax: 1,
 	/** Corrección anti-giro: angvel.y -= rotation.y * factor */
 	spinCorrectionFactor: 0.25,
 	/** Puntos de muestreo de la curva Catmull-Rom para la correa */
