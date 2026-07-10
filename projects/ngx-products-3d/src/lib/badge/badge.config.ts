@@ -28,6 +28,12 @@ export const BADGE_PHYSICS = {
 	curvePoints: 32,
 } as const;
 
+/** Drag de la tarjeta con puntero (spec-02 Fase 1, feature badge-drag) */
+export const BADGE_DRAG = {
+	/** Profundidad NDC a la que se desproyecta el puntero para situar el plano de arrastre */
+	unprojectDepth: 0.5,
+} as const;
+
 /** Posiciones iniciales (coordenadas de mundo) de los cuerpos de la cadena y la tarjeta */
 export const BADGE_LAYOUT = {
 	fixedPosition: [0.5, 4, 0] as [number, number, number],

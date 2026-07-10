@@ -14,6 +14,7 @@ import { BADGE_BAND, BADGE_CARD_PLACEHOLDER, BADGE_LAYOUT, BADGE_PHYSICS } from 
 
 interface SceneInternals {
 	cardBodyType: () => string;
+	dragged: () => boolean;
 	layout: typeof BADGE_LAYOUT;
 	placeholder: typeof BADGE_CARD_PLACEHOLDER;
 	band: typeof BADGE_BAND;
@@ -83,6 +84,12 @@ describe('Products3dBadgeScene', () => {
 		const fixture = createScene();
 
 		expect(internalsOf(fixture).cardBodyType()).toBe('dynamic');
+	});
+
+	it('starts with dragging disabled (no card grabbed until pointerdown)', () => {
+		const fixture = createScene();
+
+		expect(internalsOf(fixture).dragged()).toBe(false);
 	});
 
 	it('derives rigid body options from BADGE_PHYSICS with auto-colliders disabled', () => {

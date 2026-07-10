@@ -4,15 +4,17 @@ import {
 	computed,
 	CUSTOM_ELEMENTS_SCHEMA,
 	ElementRef,
+	inject,
 	input,
 	signal,
 	viewChild,
 } from '@angular/core';
 import { CatmullRomCurve3, DoubleSide, Vector2, Vector3 } from 'three';
-import { beforeRender, extend, injectStore, NgtArgs } from 'angular-three';
+import { beforeRender, extend, injectStore, NgtArgs, type NgtThreeEvent } from 'angular-three';
 import {
 	NgtrBallCollider,
 	NgtrCuboidCollider,
+	NgtrPhysics,
 	NgtrRigidBody,
 	ropeJoint,
 	sphericalJoint,
@@ -23,7 +25,14 @@ import {
 } from 'angular-three-rapier';
 import { MeshLineGeometry, MeshLineMaterial } from 'meshline';
 import type { BadgeMemberData, Products3dBadgeTheme } from '../types';
-import { BADGE_BAND, BADGE_CARD_PLACEHOLDER, BADGE_LAYOUT, BADGE_PHYSICS } from './badge.config';
+import { projectPointerToWorld, subtractInto } from './badge-drag';
+import {
+	BADGE_BAND,
+	BADGE_CARD_PLACEHOLDER,
+	BADGE_DRAG,
+	BADGE_LAYOUT,
+	BADGE_PHYSICS,
+} from './badge.config';
 
 // Registra los elementos custom de meshline (<ngt-mesh-line-geometry>,
 // <ngt-mesh-line-material>) en el catálogo del renderer. Idempotente a nivel de módulo.
@@ -68,6 +77,8 @@ extend({ MeshLineGeometry, MeshLineMaterial });
 			rigidBody="dynamic"
 			[options]="bodyOptions"
 			[position]="layout.cardPosition"
+			(pointerdown)="onPointerDown($event)"
+			(pointerup)="onPointerUp($event)"
 		>
 			<ngt-object3D [cuboidCollider]="cardColliderArgs" />
 			<ngt-mesh>
@@ -123,6 +134,14 @@ export class Products3dBadgeScene {
 	protected readonly doubleSide = DoubleSide;
 
 	private readonly store = injectStore();
+	private readonly physics = inject(NgtrPhysics);
+
+	// Estado del drag. `dragged` gobierna el path kinemático en beforeRender; los Vector3
+	// se instancian una vez y se reutilizan por frame (cero allocations en el loop de drag).
+	protected readonly dragged = signal(false);
+	private readonly dragOffset = new Vector3();
+	private readonly dragVec = new Vector3();
+	private readonly dragDir = new Vector3();
 
 	// Resolución de la MeshLineMaterial = tamaño del viewport, reactivo a resize.
 	// Vector2 reutilizado: el material hace .copy(value), no guarda la referencia.
@@ -186,7 +205,7 @@ export class Products3dBadgeScene {
 			{ data: this.cardJointData },
 		);
 
-		beforeRender(() => {
+		beforeRender(({ camera, pointer }) => {
 			const fixed = this.fixedBody().rigidBody();
 			const j1 = this.j1Body().rigidBody();
 			const j2 = this.j2Body().rigidBody();
@@ -197,6 +216,26 @@ export class Products3dBadgeScene {
 				return;
 			}
 
+			const card = this.cardBody().rigidBody();
+			if (this.dragged() && card) {
+				// El puntero se desproyecta al plano de arrastre y la tarjeta (kinemática) se
+				// posiciona ahí menos el offset de agarre. Se despiertan la tarjeta y los
+				// segmentos para que la cadena reaccione. dragVec/dragDir reutilizados: sin new.
+				projectPointerToWorld(
+					pointer.x,
+					pointer.y,
+					BADGE_DRAG.unprojectDepth,
+					camera,
+					this.dragVec,
+					this.dragDir,
+				);
+				card.wakeUp();
+				j1.wakeUp();
+				j2.wakeUp();
+				j3.wakeUp();
+				card.setNextKinematicTranslation(subtractInto(this.dragVec, this.dragOffset, this.dragVec));
+			}
+
 			// Orden tarjeta→anclaje; .copy() sobre los Vector3 ya instanciados (sin new).
 			this.bandPoints[0].copy(j3.translation());
 			this.bandPoints[1].copy(j2.translation());
@@ -205,5 +244,41 @@ export class Products3dBadgeScene {
 
 			this.bandGeometry().nativeElement.setPoints(this.curve.getPoints(BADGE_PHYSICS.curvePoints));
 		});
+	}
+
+	/**
+	 * Inicia el drag: captura el puntero sobre el canvas, calcula el offset de agarre en
+	 * coordenadas de mundo y conmuta la tarjeta a cuerpo kinemático (posicionable a mano).
+	 */
+	protected onPointerDown(event: NgtThreeEvent<PointerEvent>): void {
+		const card = this.cardBody().rigidBody();
+		const rigidBodyType = this.physics.rapier()?.RigidBodyType;
+		if (!card || !rigidBodyType) {
+			return;
+		}
+
+		event.stopPropagation();
+		(event.target as Element).setPointerCapture(event.pointerId);
+
+		// Offset = punto de intersección (mundo) − origen del cuerpo de la tarjeta.
+		subtractInto(event.point, card.translation(), this.dragOffset);
+
+		card.setBodyType(rigidBodyType.KinematicPositionBased, true);
+		this.cardBodyType.set('kinematicPosition');
+		this.dragged.set(true);
+	}
+
+	/** Suelta el drag: libera la captura y devuelve la tarjeta a cuerpo dinámico (cae y oscila). */
+	protected onPointerUp(event: NgtThreeEvent<PointerEvent>): void {
+		const card = this.cardBody().rigidBody();
+		const rigidBodyType = this.physics.rapier()?.RigidBodyType;
+
+		(event.target as Element).releasePointerCapture(event.pointerId);
+		this.dragged.set(false);
+
+		if (card && rigidBodyType) {
+			card.setBodyType(rigidBodyType.Dynamic, true);
+		}
+		this.cardBodyType.set('dynamic');
 	}
 }
