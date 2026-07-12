@@ -53,11 +53,18 @@ export const BADGE_LAYOUT = {
 
 /** Correa (lanyard) renderizada por frame con meshline (spec-02 Fase 1) */
 export const BADGE_BAND = {
+	/** Color base de la correa; fallback cuando `theme.colors.band` no está definido */
 	color: 'white',
 	/** Ancho de línea de la correa en unidades de mundo (meshline lineWidth) */
 	lineWidth: 1,
 	/** La correa se dibuja siempre encima; sin test de profundidad para evitar clipping con la tarjeta */
 	depthTest: false,
+	/**
+	 * Repetición de la textura de la correa (meshline `repeat`, un `Vector2`). La X negativa
+	 * (-4) tesela la textura 4 veces a lo largo de la correa invirtiendo la U (orientación del
+	 * arte del lanyard); la Y (1) no repite en el ancho. spec-03 feature 4.
+	 */
+	repeat: [-4, 1] as [number, number],
 } as const;
 
 /** Placeholder plano de la tarjeta (spec-02 Fase 1; se sustituye por el GLB en spec-03) */
@@ -80,4 +87,96 @@ export const BADGE_MATERIAL_DEFAULTS = {
 	metalness: 0.5,
 	iridescence: 0,
 	iridescenceIOR: 1,
+} as const;
+
+/**
+ * Filtrado anisotrópico del `map` de la tarjeta (nitidez del frente en ángulos rasantes).
+ * Es una propiedad de la textura, no de MeshPhysicalMaterial → vive fuera de
+ * BADGE_MATERIAL_DEFAULTS. Surte efecto cuando el map real (RenderTexture) se monta en la
+ * feature 7; aquí se declara para no dejar el 16 suelto en el componente.
+ */
+export const BADGE_MAP_ANISOTROPY = 16;
+
+/**
+ * Un lightformer del entorno de estudio: un mesh emisivo que se proyecta en el environment map
+ * como reflejo sobre el clearcoat de la tarjeta. Tipo INTERNO (no API pública). `scale` se tipa
+ * como tupla mutable a propósito: `NgtsLightformerOptions.scale` es `number | [n,n,n] | [n,n]`
+ * mutable, y un `readonly` (que introduciría `as const`) no es asignable a ese input de soba.
+ *
+ * Exportado (no re-exportado en el índice público) solo para que los `.d.ts` de la lib puedan
+ * nombrar el tipo del campo `lightformers` que expone el wrapper (evita TS4029).
+ */
+export interface BadgeLightformerOptions {
+	intensity: number;
+	color: string;
+	form: 'circle' | 'ring' | 'rect';
+	scale: [number, number, number];
+	position: [number, number, number];
+	rotation: [number, number, number];
+}
+
+/**
+ * Cuatro áreas de luz (estilo estudio del ejemplo lanyard de drei) que forman los reflejos
+ * del environment map: una barra superior tenue, dos barras laterales y un acento frontal
+ * intenso. Cada objeto ES el `[options]` que consume `<ngts-lightformer>` (incluye `position`
+ * y `rotation`, que soba spreadea al mesh vía `NgtThreeElement<Mesh>`). Valores de arranque
+ * plausibles; el ajuste fino visual del brillo/barridos es verificación manual (Nivel 3).
+ */
+const BADGE_LIGHTFORMERS: BadgeLightformerOptions[] = [
+	// Barra superior amplia y tenue: llena el reflejo base sobre el frente de la tarjeta.
+	{
+		intensity: 2,
+		color: 'white',
+		form: 'rect',
+		scale: [100, 0.1, 1],
+		position: [0, -1, 5],
+		rotation: [0, 0, Math.PI / 3],
+	},
+	// Lateral izquierdo: barrido diagonal que da relieve al clearcoat.
+	{
+		intensity: 3,
+		color: 'white',
+		form: 'rect',
+		scale: [100, 0.1, 1],
+		position: [-1, -1, 1],
+		rotation: [0, 0, Math.PI / 3],
+	},
+	// Lateral derecho / superior: segundo barrido cruzado.
+	{
+		intensity: 3,
+		color: 'white',
+		form: 'rect',
+		scale: [100, 0.1, 1],
+		position: [1, 1, 1],
+		rotation: [0, 0, Math.PI / 3],
+	},
+	// Acento frontal intenso: el destello lateral marcado sobre el barniz.
+	{
+		intensity: 10,
+		color: 'white',
+		form: 'rect',
+		scale: [100, 10, 1],
+		position: [-10, 0, 14],
+		rotation: [0, Math.PI / 2, Math.PI / 3],
+	},
+];
+
+/**
+ * Iluminación del badge (spec-03 feature 5). Data-driven: el wrapper solo itera esta config.
+ *
+ * - `ambientIntensity: Math.PI` → three r155+ usa iluminación físicamente correcta; con la
+ *   escala lineal actual una `ambientLight` de intensidad 1 queda apagada, y `Math.PI` (≈3.14)
+ *   recupera el nivel percibido pre-r155 (convención de los ejemplos de drei).
+ * - `environment`: sin `preset` (los presets resuelven HDRs desde un CDN externo → requiere
+ *   red); los reflejos vienen de los `lightformers` proyectados como hijos. Se usa
+ *   `backgroundBlurriness` (0..1), NO `blur` (deprecado en soba v4). `background: false` → el
+ *   environment solo ilumina/refleja, no se pinta como fondo.
+ */
+export const BADGE_LIGHTING = {
+	ambientIntensity: Math.PI,
+	environment: {
+		background: false,
+		backgroundBlurriness: 0.75,
+	},
+	lightformers: BADGE_LIGHTFORMERS,
 } as const;

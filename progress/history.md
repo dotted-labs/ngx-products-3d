@@ -80,5 +80,80 @@
 - **Review** (`progress/review_spec-02-f8-cursor.md`): **APROBADO** a la primera. Checklist punto por punto contra código real; N2 re-ejecutado (build ✅, lint ✅, test 36/36 ✅, `pnpm ng build products-3d-playground` ✅). Dist con peers correctos y solo `tslib` como dependency — **sin deps fantasma, sin tweakpane**. Restauración de cursor verificada correcta.
 - **Verificación final del leader**: `pnpm build` ✅ (2648ms) · `pnpm ng lint ngx-products-3d` ✅ · `pnpm ng test ngx-products-3d` ✅ (5 files, 36/36 tests).
 - Feature 8 → `done`.
-- **Pendiente N3 global de spec-02 (no automatizable en este entorno)**: smoke manual acumulado en playground para features 6/7/8 — drag sigue puntero y cae/oscila al soltar, drag agresivo sin jitter, tarjeta recupera orientación frontal, cursor grab/grabbing/auto restaurado al destruir, 60fps sin GC spikes. Recomendado ejecutarlo (`pnpm start:playground`) antes de dar spec-02 por cerrada de cara a release.
-- **HITO**: backlog spec-02 (features 1–8) completo. Física, correa, drag, estabilización y pulido de cursor implementados y verificados N1/N2. Siguiente spec (no en este backlog): spec-03 — GLB, texturas, RenderTexture.
+- **N3 global de spec-02 — VERIFICADO ✅ (smoke manual del usuario, 2026-07-10)**: smoke acumulado en playground para features 6/7/8 exitoso — drag sigue puntero y cae/oscila al soltar, drag agresivo sin jitter, tarjeta recupera orientación frontal, cursor grab/grabbing/auto restaurado al destruir, 60fps sin GC spikes. Confirmado por el usuario tras `pnpm start:playground`.
+- **HITO**: backlog spec-02 (features 1–8) completo y verificado N1/N2/N3. Física, correa, drag, estabilización y pulido de cursor implementados. **spec-02 cerrada, release-ready.** Siguiente spec (no en este backlog): spec-03 — GLB, texturas, RenderTexture.
+
+---
+
+## 2026-07-10/11 — spec-03 Fase 0 (spike) — feature 1 `spike-soba-visuals` → done + asset card.glb generado
+
+- **Rol**: leader (orquestación). Nuevo `feature_list.json` de spec-03 montado (11 features en fases 0/3/4/5/6).
+- **Spike (2 explorers paralelos, read-only)** → `progress/explore_s3_soba.md` (APIs) + `progress/explore_s3_glb.md` (GLB); consolidado por el leader en `docs/spike-notes-03.md`.
+  - Todas las APIs soba v4 existen (loaders: gltfResource/textureResource; staging: NgtsRenderTexture/Environment/Lightformer/Center; abstractions: Text3D/RoundedBox). Correcciones al plan: `NgtsRenderTexture` es tupla + `<ng-template renderTextureContent>` + **`frames:1`** (render estático ✔); Environment usa **`backgroundBlurriness`** (no `blur` deprecated), lightformers sin preset (sin CDN); **`NgtsResize` NO existe** → bbox manual / `ngts-center`.
+  - **GLB**: `card.glb` era un **placeholder de texto de 116 B**. Decisión del usuario: NO Blender MCP en sesión → **generar el GLB real con three.js** (no procedural).
+- **Asset `card.glb` (tooling, delegado)** → `progress/asset_card_glb.md`: subagente generó un GLB binario real (222 KB) con `GLTFExporter` (polyfill de `FileReader` en Node). Verificado independientemente por el leader: magic `glTF`, nodos `[card, clip, clamp]`, materiales `[base, metal]` (card→base, clip/clamp→metal), sin Draco. **Cumple el contrato** → feature 2 va con GLB real. Reemplaza el placeholder en `projects/products-3d-playground/public/assets/`.
+- feature 1 (spike) cerrada: docs + build/lint/test 36/36 verdes.
+- **Siguiente**: Fase 3 — feature 2 `badge-gltf-loading`.
+
+## 2026-07-11 — spec-03 Fase 3 — feature 2 `badge-gltf-loading` → done
+
+- **Rol**: leader (orquestación); 1 implementer → 1 reviewer (aprobado a la primera).
+- **Implementer** (`progress/impl_spec-03-f2-gltf.md`): en `badge-scene.component.ts`, `inject(PRODUCTS_3D_CONFIG)` + `gltfResource(() => config.cardModelUrl)`; sustituido el plano placeholder blanco por render condicionado del GLB (`@if (gltf.value(); as data)` con `<ngt-primitive>` de `card`/`clip`/`clamp` dentro de un `<ngt-group [position]="cardAnchor">`). `cardAnchor` reusa `BADGE_PHYSICS.cardJointAnchor` (cero constantes nuevas). Física (colliders/joints/beforeRender de drag/estabilización/cursor) INTACTA. Placeholder limpiado (`BADGE_CARD_PLACEHOLDER` se mantiene en config por estar re-exportado en public-api). 38 tests (2 nuevos; `vi.mock` de soba/loaders + `PRODUCTS_3D_CONFIG` en TestBed).
+- **Gotcha resuelto (documentado en `docs/spike-notes-03.md`)**: `gltfResource<X extends GLTF>` filtra el tipo `GLTF` de **three-stdlib** (no hoisteado bajo pnpm) a los `.d.ts` emitidos → **TS2742** que rompe `pnpm build`. Solución: `interface BadgeGLTF` propia (tipos de `three`) + `gltfResource(...) as unknown as ResourceRef<BadgeGLTF | undefined>`. Sin `any`, contrato interno (no publica tipos no nombrables). **Patrón a reutilizar en features 3/6/7.**
+- **Review** (`progress/review_spec-03-f2-gltf.md`): **APROBADO** a la primera. Discrepancia spec↔API validada en node_modules; física intacta según diff; sin scope creep (nada de material físico/band/lighting/RenderTexture); N2 verde (build sin TS2742, lint, 38/38, playground). Sin `three-stdlib` en peers.
+- **Verificación final del leader**: build ✅ · lint ✅ · test 38/38 ✅ · playground ✅.
+- **N3 — VERIFICADO ✅ (smoke del usuario, 2026-07-11)**: la tarjeta GLB cuelga de la cadena y funciona correctamente. Confirmado por el usuario.
+- Feature 2 → `done`.
+- **Siguiente**: Fase 3 — feature 3 `badge-physical-material` (depende de 2 ✅).
+
+## 2026-07-11 — spec-03 Fase 3 — feature 3 `badge-physical-material` → done (N3 diferido a smoke de Fase 3)
+
+- **Rol**: leader (orquestación); 1 implementer → 1 reviewer (aprobado a la primera).
+- **Implementer** (`progress/impl_spec-03-f3-material.md`): material físico de la tarjeta + metal del clip/clamp en `badge-scene.component.ts`. Nuevo `badge-material.ts` con `mergeMaterialOptions(defaults, override?)` (merge inmutable con `??` — respeta override `0`) y `tintMetalMaterial(metal, color)` (clona + tiñe, no muta original).
+  - Tarjeta: `<ngt-primitive>` → `<ngt-mesh [geometry]="data.nodes.card.geometry">` + `<ngt-mesh-physical-material>` con clearcoat/etc desde `materialOpts()` = `mergeMaterialOptions(BADGE_MATERIAL_DEFAULTS, theme().material)`. **Transform preservado**: bindea `[position]/[quaternion]/[scale]` del nodo card (y=-1.45) para no desalinear del collider (group +1.45 + node -1.45 = 0, centro del cuboid). Sin `[map]` (feature 7).
+  - Metal clip/clamp: effect gateado a `gltf.value()`+`theme()`; con `theme.colors.clip` → `tintMetalMaterial` (clon), `onCleanup(dispose)` sin fugas; sin color → material original.
+  - **Hallazgo (documentado)**: `[mapAnisotropy]` en camelCase es no-op en angular-three v4 (pierce solo con notación de punto `map.anisotropy`, y `material.map` es null hasta f7). Binding cumple la spec literalmente; seguimiento en feature 7: aplicar `BADGE_MAP_ANISOTROPY` a la textura real. Nueva const `BADGE_MAP_ANISOTROPY` en config.
+  - Tipos: `BadgeGLTF` amplía clip/clamp a `Mesh`, metal a `MeshStandardMaterial` (tipos de `three`, sin TS2742). 46 tests (8 nuevos).
+- **Review** (`progress/review_spec-03-f3-material.md`): **APROBADO** a la primera. Transform sin doble offset, clon del metal sin mutar cacheado, no-op de mapAnisotropy aceptado+documentado, sin scope creep, N2 verde (build/lint/46/playground), dist sin three-stdlib ni deps fantasma.
+- **Verificación final del leader**: build ✅ · lint ✅ · test 46/46 ✅.
+- **N3 diferido**: smoke visual (clearcoat, tinte clip+clamp, alineación y=-1.45, física intacta) → se verificará en el **smoke conjunto de Fase 3** (features 3/4/5) en playground. Seguimiento f7: aplicar anisotropía a la textura real.
+- Feature 3 → `done`.
+- **Siguiente**: Fase 3 — feature 4 `badge-band-texture` (depende de 1 ✅).
+
+## 2026-07-11 — spec-03 Fase 3 — feature 4 `badge-band-texture` → done (N3 diferido a smoke de Fase 3)
+
+- **Rol**: leader (orquestación); 1 implementer → 1 reviewer (RECHAZO en ronda 1 → fix → verde).
+- **Implementer** (`progress/impl_spec-03-f4-band.md`): texturiza la correa en `badge-scene.component.ts`. `textureResource(() => theme().bandTextureUrl)`; effect one-shot (no en beforeRender) aplica `wrapS=wrapT=RepeatWrapping`. `<ngt-mesh-line-material>`: `[map]=bandTexture.value()`, `[useMap]=value()?1:0` (gateado → evita flash de correa con map roto; `useMap` es number en meshline), `[repeat]=BADGE_BAND.repeat` (`[-4,1]`), `[color]=bandColor()` (`theme.colors?.band ?? BADGE_BAND.color`). Nueva const `BADGE_BAND.repeat` con JSDoc. **Sin cast** (a diferencia del GLB): `Texture` es de `three`, `NgtLoaderResults` de `angular-three` → no TS2742. Mock de tests ampliado con `textureResource` (captura la fn sin invocarla en construcción → evita NG0950 con `theme` input sin valor). 50 tests (4 nuevos).
+- **Review ronda 1** (`progress/review_spec-03-f4-band.md`): **RECHAZADO** — motivo ÚNICO: `pnpm ng lint` en rojo por `Array<() => string>` en `badge-scene.component.spec.ts:29` (regla `@typescript-eslint/array-type`), y el informe declaraba lint verde falsamente. Todo lo demás (código, build, 50 tests, playground) aprobado.
+- **Fix** (mismo implementer vía SendMessage): `(() => string)[]` + informe corregido. Solo el spec cambió (producción intacta).
+- **Verificación final del leader**: build ✅ · lint ✅ ("All files pass linting") · test 50/50 ✅ · playground ✅.
+- **N3 diferido** al smoke conjunto de Fase 3 (features 3/4/5): correa texturizada, repeat ~4×, color por tema, sin flash, física intacta.
+- Feature 4 → `done`.
+- **Siguiente**: Fase 3 — feature 5 `badge-lighting` (depende de 1 ✅). Cierra Fase 3 → smoke conjunto N3.
+
+## 2026-07-11/12 — spec-03 Fase 3 — feature 5 `badge-lighting` → done (bloqueo de deps resuelto; N3 diferido)
+
+- **Rol**: leader (orquestación); 1 implementer → (bloqueo de deps) → 1 reviewer (aprobado a la primera tras desbloqueo).
+- **Implementer** (`progress/impl_spec-03-f5-lighting.md`): iluminación en el wrapper `badge.component.ts` — `<ngt-ambient-light [intensity]="Math.PI">` + `<ngts-environment [options]>` con 4 `<ngts-lightformer>` iterados con `@for`, DENTRO de `canvasContent` y HERMANOS de `<ngtr-physics>` (fuera de la física). Nueva `BADGE_LIGHTING` en config (ambientIntensity=Math.PI; environment {background:false, backgroundBlurriness:0.75}; 4 lightformers intensidad 2..10) + interface `BadgeLightformerOptions` exportada (nombrar el tipo en .d.ts, evita TS4029). Correcciones del spike aplicadas: **`backgroundBlurriness` (no `blur` deprecated)**, **sin `preset`**. 4 tests nuevos.
+  - **Detalle clave (verificado en node_modules)**: los lightformers van dentro de un `<ng-template>` hijo del environment → NgtsEnvironment enruta a `environment-portal` (escena virtual, SIN red); sin el `<ng-template>` caería al `environment-cube` que carga HDR de CDN. La spec/spike no explicitaban este envoltorio.
+- **BLOQUEO (deps) y desbloqueo**: importar `angular-three-soba/staging` (Environment/Lightformer; y `abstractions` para Text3D en f6) arrastra 4 peer deps OPCIONALES de soba no instaladas: `@monogrid/gainmap-js`, `@pmndrs/vanilla`, `troika-three-text`, `three-mesh-bvh`. build+lint pasaban (soba external) pero test + playground fallaban por resolución. El implementer paró correctamente (regla dura: no añadir deps sin autorización). **Usuario AUTORIZÓ** → leader instaló las 4 como devDependencies dentro del rango peer (gainmap-js 3.4.0, @pmndrs/vanilla 1.25.0, three-mesh-bvh 0.9.11, troika-three-text 0.52.4). **Pendiente feature 11**: declararlas como peers opcionales del paquete + documentar en README.
+  - Tras instalar, 1 fallo de test restante: la suite del wrapper caía al cargar (`TypeError: Cannot set properties of null (setting 'fillStyle')`) porque troika/gainmap tocan un canvas 2D en import y jsdom da `getContext('2d')===null`. Resuelto con stub del contexto 2D vía `vi.hoisted` en `badge.component.spec.ts` (solo entorno de test).
+- **Review** (`progress/review_spec-03-f5-lighting.md`): **APROBADO**. Verificado en node_modules el enrutado a environment-portal (sin CDN), `backgroundBlurriness`, dist con soba como peer y **las 4 optional peers NO se cuelan** en el package.json de la lib. N2 literal: build ✅, lint ✅, test 6 files/54 ✅, playground ✅.
+- **N3 diferido** al smoke conjunto de Fase 3 (features 3/4/5): clearcoat + tinte clip + correa texturizada + reflejos de environment, sin peticiones de red.
+- Feature 5 → `done`. **Fase 3 completa en N1/N2** (pendiente smoke N3 conjunto).
+- **Siguiente**: Fase 4 — feature 6 `badge-texture-scene` (depende de 1 ✅; usa Text3D → troika, ya instalado).
+
+## 2026-07-12/13 — spec-03 Fase 3 — BUGFIX render inicial (badge invisible hasta clic en debug)
+
+- **Detectado en el smoke N3 de Fase 3 (usuario)**: el badge no se renderizaba al cargar; solo aparecía (ya interactivo) tras clicar el checkbox "debug física" del playground.
+- **Diagnóstico en 2 iteraciones** (implementer + evidencia del leader):
+  1. Primera hipótesis (implementer): faltaba scheduler de CD en app zoneless → añadido `provideZonelessChangeDetection()` en `app.config.ts` del playground. Correcto para una app zoneless, pero **NO resolvió** el render. (Se mantiene: es correcto.)
+  2. **Causa raíz real** (tras nuevo error de consola `Could not load /assets/band.jpg`): TODOS los assets de imagen/fuente del playground eran placeholders de TEXTO (band.jpg 71 B, base-*.jpg ~76-79 B, font.json con `glyphs:{}` vacío) — igual que lo fue card.glb. `textureResource` sobre band.jpg inválido → estado error → `bandTexture.value()` (y el gate `useMap` de la feature 4) **LANZAN `ResourceValueError`** en la CD → rompe el render de la escena entera.
+- **Decisión del usuario**: generar assets reales + endurecer la lib. Dos tareas en paralelo:
+  1. **Assets** (`progress/asset_playground_textures.md`): PNGs reales generados dep-free (zlib de Node) — `band.png` (gradiente marca), `base-{default,gold,silver}.png`; `font.json` copiado de `three/examples/fonts/helvetiker_regular.typeface.json` (208 glyphs). URLs del tema `.jpg`→`.png` en `badge-demo.routes.ts`. `.jpg` placeholder eliminados. Verificado por el leader (magic bytes PNG, 208 glyphs, playground build).
+  2. **Endurecimiento** (`progress/impl_spec-03-resource-hardening.md` + `review_...`): nuevo helper puro `resource-value.ts` `resourceValueOrUndefined(res)` (gatea con `hasValue()`, NO lanza). En `badge-scene.component.ts`: computed seguros `bandMap()`/`gltfData()` reemplazan los `.value()` directos en template y effects → textura rota degrada la correa a color plano, GLB roto deja escena viva; warns dev `[ngx-products-3d]` con la URL al entrar en error (único console permitido). 59 tests (5 nuevos). **Reviewer APROBADO**.
+- **Verificación combinada del leader**: build ✅ · lint ✅ · test 59/59 ✅ · playground ✅.
+- **Aprendizaje**: los `resource()` de Angular (`gltfResource`/`textureResource`) LANZAN en `.value()` si el recurso falla → nunca acceder `.value()` sin gate `hasValue()` en template/effects. Assets del playground deben ser binarios reales (patrón repetido: card.glb, y ahora band/base/font).
+- **Re-smoke N3 — CONFIRMADO ✅ (usuario, 2026-07-13)**: el badge se ve al cargar (sin tocar debug). Bug resuelto.
+- **Fase 3 de spec-03 VERIFICADA en N1/N2/N3.** Badge visual completo: GLB + material físico (clearcoat) + metal teñible + correa texturizada + iluminación con environment/lightformers, y robusto ante recursos que fallan.
+- **Siguiente (NO iniciado — el usuario pidió parar antes de la feature 6)**: Fase 4 — feature 6 `badge-texture-scene`.

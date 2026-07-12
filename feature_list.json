@@ -1,6 +1,6 @@
 {
   "project": "ngx-products-3d",
-  "description": "Productos 3D interactivos para Angular (Angular Three v4). Backlog actual: spec-02 (badge — física, correa y drag). Fuera de alcance hasta spec-03: GLB, texturas, RenderTexture.",
+  "description": "Productos 3D interactivos para Angular (Angular Three v4). Backlog actual: spec-03 (badge — GLB, materiales, textura dinámica del socio, theming y API pública final). spec-02 (física/correa/drag) completada y cerrada (ver progress/history.md).",
   "rules": {
     "one_feature_at_a_time": true,
     "require_tests_to_close": true,
@@ -9,15 +9,15 @@
   "features": [
     {
       "id": 1,
-      "name": "spike-rapier-joints",
-      "title": "Spike S1 — API de joints en angular-three-rapier@4",
-      "spec": "spec-02",
+      "name": "spike-soba-visuals",
+      "title": "Spike S3 — APIs soba v4 (loaders, RenderTexture, Text3D, Environment) + contrato del GLB",
+      "spec": "spec-03",
       "phase": 0,
       "depends_on": [],
-      "description": "Verificar si angular-three-rapier@4 expone rope joint y spherical joint (grep en node_modules/angular-three-rapier/*.d.ts). Caso A (existen): documentar firma exacta. Caso B (no existen): implementar wrapper propio en projects/ngx-products-3d/src/lib/badge/joints.ts sobre el mundo Rapier crudo (RAPIER.JointData.rope / RAPIER.JointData.spherical) con effect() que espera a que ambos bodies existan y cleanup vía DestroyRef (world.removeImpulseJoint). Bloqueante para las features 4+.",
+      "description": "Verificar en node_modules/angular-three-soba (*.d.ts) y docs las firmas EXACTAS de: gltfResource/textureResource (loaders) y patrón de consumo (.value(), estado de carga, tipos genéricos); NgtsRenderTexture (staging) — selector, directiva de contenido (¿*renderTextureContent?), camera content (¿cameraContent?), opciones exactas (width/height/attach/frames — ¿existe render estático frames:1?); NgtsText3D (abstractions) — inputs, cómo se pasa fontUrl, medición de bounding box; NgtsEnvironment + NgtsLightformer (staging) — inputs (background, blur, intensity, position, rotation, scale); NgtsRoundedBox (abstractions) — args; ajuste de nombre largo: ¿existe NgtsResize en soba v4 o solo NgtsCenter? (grep confirmó Center, NO Resize) → decidir fallback geometry.computeBoundingBox()+scale. Además: inspeccionar projects/products-3d-playground/public/assets/card.glb (con three GLTFLoader en un script Node o inspector) → ¿cumple el contrato de nodos 'card'/'clip'/'clamp' y materiales 'base'/'metal' de spec-03? ¿usa Draco? Decidir GLB real vs geometría procedural provisional (RoundedBox + torus). BLOQUEANTE para features 2+.",
       "acceptance": [
-        "docs/spike-notes.md documenta la API confirmada de joints (nativa o wrapper) con firmas exactas",
-        "Si caso B: joints.ts implementado y testeado con dos cubos unidos (rope y spherical)",
+        "docs/spike-notes-03.md documenta firmas exactas de cada API soba usada (con ruta node_modules:línea) y la decisión Resize vs bounding-box manual",
+        "docs/spike-notes-03.md documenta los nodos/materiales reales de card.glb y la decisión GLB-real vs procedural (y si Draco)",
         "pnpm build termina sin errores",
         "pnpm ng lint ngx-products-3d termina sin errores",
         "pnpm ng test ngx-products-3d muestra > 0 tests y todos verdes"
@@ -26,14 +26,16 @@
     },
     {
       "id": 2,
-      "name": "spike-meshline",
-      "title": "Spike S2 — meshline con renderer angular-three v4",
-      "spec": "spec-02",
-      "phase": 0,
-      "depends_on": [],
-      "description": "Verificar que extend({ MeshLineGeometry, MeshLineMaterial }) de meshline funciona con el renderer v4: <ngt-mesh-line-geometry> y <ngt-mesh-line-material> renderizan (CUSTOM_ELEMENTS_SCHEMA) y setPoints() funciona desde beforeRender. Si meshline da fricción con three >=0.174, documentar fallback THREE.TubeGeometry regenerada por frame (peor perf; solo fallback). Bloqueante para la feature 5.",
+      "name": "badge-gltf-loading",
+      "title": "Carga del GLB y geometría de la tarjeta/clip/clamp",
+      "spec": "spec-03",
+      "phase": 3,
+      "depends_on": [1],
+      "description": "En badge-scene.component.ts: gltfResource<BadgeGLTF>(() => config.cardModelUrl) (inject PRODUCTS_3D_CONFIG). Tipar BadgeGLTF con el contrato de nodos ('card'/'clip'/'clamp') y materiales ('base'/'metal') confirmado en el spike. Render condicionado a recurso resuelto (patrón v4 .value()): sustituir el plane-geometry placeholder blanco de spec-02 por la geometría 'card' del GLB, y añadir meshes clip + clamp. Si el spike concluyó que card.glb NO cumple contrato → geometría procedural provisional (NgtsRoundedBox tarjeta + torus clip) con misma estructura para swap trivial. El cuboid collider y la cadena física quedan INTACTOS (la física no depende del visual). Origen del conjunto en el punto de anclaje del clip (coincide con BADGE_PHYSICS.cardJointAnchor, sin offsets mágicos).",
       "acceptance": [
-        "docs/spike-notes.md incluye sección meshline: elementos verificados, uso de setPoints() y decisión meshline vs fallback TubeGeometry",
+        "La tarjeta se renderiza con la geometría del GLB (o procedural provisional documentada) colgando de la cadena; física intacta",
+        "BadgeGLTF tipado con el contrato de nodos/materiales; render condicionado a .value() resuelto (sin flash de escena sin cargar)",
+        "cardModelUrl leído de PRODUCTS_3D_CONFIG; cero URLs hardcodeadas en el componente",
         "pnpm build termina sin errores",
         "pnpm ng lint ngx-products-3d termina sin errores",
         "pnpm ng test ngx-products-3d muestra > 0 tests y todos verdes"
@@ -42,17 +44,16 @@
     },
     {
       "id": 3,
-      "name": "badge-canvas-wrapper",
-      "title": "Canvas wrapper con física en badge.component.ts",
-      "spec": "spec-02",
-      "phase": 1,
-      "depends_on": [1],
-      "description": "Sustituir el stub de badge.component.ts por <ngt-canvas> con camera BADGE_CAMERA + NgtrPhysics con options { gravity: BADGE_PHYSICS.gravity, timeStep: BADGE_PHYSICS.timeStep, interpolate: true, debug: debug() } envolviendo products-3d-badge-scene (verificar selector/estructura exacta de NgtrPhysics v4 en docs de angularthree.org). provideNgtRenderer() (EnvironmentProviders): lo registra el consumidor en los providers de la ruta que monta el badge, no cabe en providers de componente (validado en review). Guard SSR: canvas envuelto en @if (isBrowser) con isPlatformBrowser(inject(PLATFORM_ID)). Input debug (boolean, default false) como passthrough a Physics.",
+      "name": "badge-physical-material",
+      "title": "Material físico de la tarjeta (clearcoat) + metal del clip/clamp",
+      "spec": "spec-03",
+      "phase": 3,
+      "depends_on": [2],
+      "description": "Tarjeta ('card'): <ngt-mesh-physical-material> con mapAnisotropy 16 y clearcoat/clearcoatRoughness/roughness/metalness/iridescence/iridescenceIOR desde un computed materialOpts() = merge de BADGE_MATERIAL_DEFAULTS con theme.material (override parcial). El input [map] llega en la feature 7 (RenderTexture); aquí queda sin map o con placeholder. Clip/clamp: material 'metal' del GLB tal cual; si theme.colors.clip está presente, teñir el material metal (CLONAR el material antes de mutar — el GLB cachea materiales compartidos). Merge de material y selección de color extraídos a fn pura testeable.",
       "acceptance": [
-        "Canvas y escena montan en browser (playground)",
-        "Montado en entorno server no toca document ni canvas (guard SSR)",
-        "Input debug llega a NgtrPhysics y activa el debug de física",
-        "Sin dependencia de Zone.js (zoneless-safe)",
+        "La tarjeta muestra material físico con clearcoat; defaults de BADGE_MATERIAL_DEFAULTS mergeados con theme.material (override parcial verificable)",
+        "theme.colors.clip tiñe el metal sin mutar el material cacheado del GLB (clon)",
+        "materialOpts() y el merge son fn pura con test N1 (defaults, override parcial, override total)",
         "pnpm build termina sin errores",
         "pnpm ng lint ngx-products-3d termina sin errores",
         "pnpm ng test ngx-products-3d muestra > 0 tests y todos verdes"
@@ -61,15 +62,15 @@
     },
     {
       "id": 4,
-      "name": "badge-physics-chain",
-      "title": "Cadena física: bodies, colliders y joints en badge-scene.component.ts",
-      "spec": "spec-02",
-      "phase": 1,
-      "depends_on": [1, 3],
-      "description": "Escena con cuerpos: fixed (fixed, [0.5,4,0], sin collider), j1/j2/j3 (dynamic, [0.5,3..1,0], ball collider ~0.1), card (dynamic ↔ kinematicPosition vía signal cardBodyType, [2,0,0], cuboid [0.8,1.125,0.01]). Todos con angularDamping/linearDamping de BADGE_PHYSICS y colliders: false (colliders explícitos). Joints: rope fixed↔j1, j1↔j2, j2↔j3 (anchors [0,0,0], longitud BADGE_PHYSICS.segmentLength) y spherical j3↔card (anchor en card = BADGE_PHYSICS.cardJointAnchor). Card con mesh placeholder: plane-geometry [1.6, 2.25] + mesh-basic-material blanco transparent opacity 0.9 DoubleSide.",
+      "name": "badge-band-texture",
+      "title": "Correa texturizada con repeat y color por tema",
+      "spec": "spec-03",
+      "phase": 3,
+      "depends_on": [1],
+      "description": "Sustituir el material blanco de la correa (spec-02 feature 5) por textura: textureResource(() => theme().bandTextureUrl); al resolver, texture.wrapS = texture.wrapT = THREE.RepeatWrapping. <ngt-mesh-line-material> con [map]=bandTexture.value(), [useMap]=true, [repeat]=BADGE_BAND.repeat ([-4,1]), [color]=theme.colors?.band ?? 'white', resolution/lineWidth/depthTest como spec-02. Añadir repeat a BADGE_BAND en badge.config.ts (as const + JSDoc). Render/binding condicionado a textura resuelta.",
       "acceptance": [
-        "El plano placeholder cuelga de la cadena y oscila con gravedad al montar la escena",
-        "Damping, longitudes y anchors salen de BADGE_PHYSICS; cero números mágicos en el componente",
+        "Correa con textura repetida (repeat [-4,1]) y color del tema (fallback 'white'); wrapping RepeatWrapping aplicado",
+        "repeat desde BADGE_BAND (config); cero números mágicos en el componente",
         "pnpm build termina sin errores",
         "pnpm ng lint ngx-products-3d termina sin errores",
         "pnpm ng test ngx-products-3d muestra > 0 tests y todos verdes"
@@ -78,16 +79,15 @@
     },
     {
       "id": 5,
-      "name": "badge-band-rendering",
-      "title": "Correa renderizada por frame con meshline",
-      "spec": "spec-02",
-      "phase": 1,
-      "depends_on": [2, 4],
-      "description": "Correa: THREE.CatmullRomCurve3 con 4 Vector3 reutilizados (sin allocations por frame), curveType 'chordal' fijado una vez. En beforeRender: copiar traslaciones de j3, j2, j1, fixed a los puntos de la curva (orden tarjeta→anclaje) y bandGeometry.setPoints(curve.getPoints(BADGE_PHYSICS.curvePoints)). Material mesh-line: color white, lineWidth 1, depthTest false, resolution = tamaño del viewport obtenido del store de angular-three (reactivo a resize).",
+      "name": "badge-lighting",
+      "title": "Iluminación: ambient + Environment con Lightformers",
+      "spec": "spec-03",
+      "phase": 3,
+      "depends_on": [1],
+      "description": "En badge.component.ts, DENTRO del <ngt-canvas> pero FUERA de <ngtr-physics>: <ngt-ambient-light [intensity]=\"Math.PI\"> + NgtsEnvironment (soba, background=false, blur=0.75) conteniendo 4 NgtsLightformer (intensidades 2-10, posiciones laterales/superior, rotation para barridos de reflejo sobre el clearcoat). TODOS los valores (intensidades, posiciones, rotaciones, escalas, blur) → nueva const BADGE_LIGHTING en badge.config.ts (as const + JSDoc), iterada en el template. Ajuste fino visual en playground (N3). Guard SSR heredado del wrapper (solo browser).",
       "acceptance": [
-        "Correa blanca curva suave (32 puntos) visible siguiendo la cadena en movimiento",
-        "Sin allocations por frame: Vector3 y curva reutilizados (verificar con profiler: sin GC spikes)",
-        "resolution de la material se actualiza al redimensionar el viewport",
+        "Reflejos de environment visibles sobre el clearcoat de la tarjeta; 4 lightformers montados",
+        "Todos los parámetros de luz desde BADGE_LIGHTING; cero números mágicos en el componente (Math.PI del ambient documentado)",
         "pnpm build termina sin errores",
         "pnpm ng lint ngx-products-3d termina sin errores",
         "pnpm ng test ngx-products-3d muestra > 0 tests y todos verdes"
@@ -96,59 +96,114 @@
     },
     {
       "id": 6,
-      "name": "badge-drag",
-      "title": "Drag de la tarjeta con puntero",
-      "spec": "spec-02",
-      "phase": 1,
-      "depends_on": [4],
-      "description": "onPointerDown: setPointerCapture(event.pointerId), calcular offset event.point − card.translation() y guardarlo en signal dragged, cardBodyType.set('kinematicPosition'). En beforeRender si dragged(): unproject del puntero a posición mundo (vec.set(pointer.x, pointer.y, 0.5).unproject(camera); dir = vec − camera.position normalizado; vec += dir * camera.position.length()), wakeUp() de card, j1, j2, j3, y card.setNextKinematicTranslation(vec − dragOffset). onPointerUp: release capture, dragged.set(false), cardBodyType.set('dynamic'). Todos los vectores (vec, dir, …) instancias THREE.Vector3 de clase reutilizadas.",
+      "name": "badge-texture-scene",
+      "title": "Escena secundaria del frente: textura base por tier + Text3D del socio",
+      "spec": "spec-03",
+      "phase": 4,
+      "depends_on": [1],
+      "description": "Implementar el stub badge-texture.component.ts (escena que se renderiza a textura). Contiene: (1) cámara propia PerspectiveCamera manual makeDefault en [0,0,5]; (2) plano de fondo con textureResource(baseTextureUrl) donde baseTextureUrl = computed(theme.baseTextures[member.tier] ?? theme.defaultBaseTextureUrl) — ya existe el computed en el stub; colorSpace sRGB; (3) textos 3D NgtsText3D con theme().fontUrl y color theme.colors?.text ?? 'black' para member.name (principal), member.memberNumber (secundario, prefijo configurable ej '#'), member.tier (etiqueta, uppercase). Posiciones/rotaciones/tamaños/height de cada texto → nueva const BADGE_TEXT_LAYOUT en badge.config.ts (array de slots { field, position, rotation, size, height }), iterada en el template (data-driven). (4) Ajuste de nombre largo: medir bounding box del texto y escalar a ancho máximo (NgtsCenter/Resize si el spike confirmó disponibilidad, si no geometry.computeBoundingBox()+scale). Prefijo del número y ancho máximo → config.",
       "acceptance": [
-        "La tarjeta sigue al puntero durante el drag y la cadena reacciona",
-        "Al soltar, la tarjeta cae y oscila (vuelve a dynamic) — hito Fase 1 completo",
-        "Pointer capture activo durante el drag y liberado al soltar",
-        "Sin allocations por frame en el path de drag",
+        "La escena secundaria monta cámara propia, plano con textura base por tier (fallback a defaultBaseTextureUrl) y los 3 textos del socio con la fuente del tema",
+        "Layout de textos data-driven desde BADGE_TEXT_LAYOUT; cambiar el array reordena sin tocar el componente",
+        "baseTextureUrl con fallback de tier desconocido testeado (fn pura, tier conocido y desconocido)",
+        "Nombre largo se escala a ancho máximo (no desborda la tarjeta)",
         "pnpm build termina sin errores",
         "pnpm ng lint ngx-products-3d termina sin errores",
         "pnpm ng test ngx-products-3d muestra > 0 tests y todos verdes"
       ],
-      "status": "done"
+      "status": "pending"
     },
     {
       "id": 7,
-      "name": "badge-anti-jitter-spin",
-      "title": "Estabilización: anti-jitter (lerp) y anti-giro",
-      "spec": "spec-02",
-      "phase": 2,
-      "depends_on": [5, 6],
-      "description": "Anti-jitter: j1Lerped/j2Lerped (Vector3) actualizados en beforeRender con lerp(body.translation(), delta * (minSpeed + clampedDistance * (maxSpeed − minSpeed))) donde clampedDistance = clamp(distancia, 0.1, 1); inicializar copia en el primer frame. La curva de la correa pasa a usar j3.translation(), j2Lerped, j1Lerped, fixed.translation(). Anti-giro: en beforeRender cuando NO hay drag, card.setAngvel({ x: ang.x, y: ang.y − rot.y * BADGE_PHYSICS.spinCorrectionFactor, z: ang.z }, true); si con quaternion crudo el eje no corresponde, convertir a Euler antes.",
+      "name": "badge-rendertexture-map",
+      "title": "RenderTexture como map del material de la tarjeta + reactividad",
+      "spec": "spec-03",
+      "phase": 4,
+      "depends_on": [3, 6],
+      "description": "Montar NgtsRenderTexture (soba) como [map] del mesh-physical-material de la tarjeta en la escena principal: <ngts-render-texture [options]=\"{ width: BADGE_TEXTURE.size, height: BADGE_TEXTURE.size, attach: 'map' }\"> con la directiva de contenido confirmada en el spike (p.ej. *renderTextureContent) envolviendo <products-3d-badge-texture [member]=member() [theme]=theme() />. Si soba soporta render estático (frames:1 u equivalente), usarlo e invalidar al cambiar member/theme (el frente no cambia por frame); si no, dejar re-render por frame documentando el coste. Reactividad: cambiar member/theme en el playground actualiza la tarjeta SIN recrear el canvas.",
       "acceptance": [
-        "Drag agresivo sin jitter visible en la correa",
-        "La tarjeta vuelve a orientación frontal (mira a cámara) tras soltar",
-        "minSpeed, maxSpeed y spinCorrectionFactor leídos de BADGE_PHYSICS",
+        "La tarjeta muestra la textura dinámica (nombre + número + tier sobre textura base del tier) como map del material físico",
+        "Cambiar member o theme actualiza la tarjeta sin recrear el canvas (reactivo)",
+        "size desde BADGE_TEXTURE; render estático (frames:1) si soba lo permite, o coste por-frame documentado",
         "pnpm build termina sin errores",
         "pnpm ng lint ngx-products-3d termina sin errores",
         "pnpm ng test ngx-products-3d muestra > 0 tests y todos verdes"
       ],
-      "status": "done"
+      "status": "pending"
     },
     {
       "id": 8,
-      "name": "badge-cursor-polish",
-      "title": "Cursor, repaso de config y debug en playground",
-      "spec": "spec-02",
-      "phase": 2,
+      "name": "badge-theme-validation",
+      "title": "Validación de tema en dev mode",
+      "spec": "spec-03",
+      "phase": 5,
       "depends_on": [6],
-      "description": "Effect sobre hovered/dragged que aplica document.body.style.cursor: drag → 'grabbing', hover → 'grab', resto → 'auto'; solo en browser, restaurando en cleanup del effect y en DestroyRef. Repaso final: ningún número mágico en componentes, todo desde badge.config.ts. Exponer toggle de debug física en el playground (Tweakpane opcional solo en playground, nunca dependencia de la lib). Verificar 60fps estables en playground desktop.",
+      "description": "Ampliar la resolución de tema (resolvedTheme en badge.component.ts / helper): si el tema resuelto carece de defaultBaseTextureUrl o fontUrl → throw new Error('[ngx-products-3d] badge: <qué falta y cómo arreglarlo>') (validación temprana, no en mitad del render). Extraer la validación a fn pura testeable. Mantener el error existente de 'no theme'. Solo dev (ngDevMode) si la spec/conventions lo indican para warnings, pero los errores de config duros van siempre.",
       "acceptance": [
-        "Cursor correcto en los 3 estados (grabbing/grab/auto) y restaurado al destruir el componente",
-        "Cero números mágicos en componentes; todos los valores desde badge.config.ts",
-        "Toggle de debug física accesible desde el playground",
-        "60fps estables en playground (desktop); zoneless-safe",
+        "Tema sin defaultBaseTextureUrl → Error con prefijo [ngx-products-3d] y mensaje accionable",
+        "Tema sin fontUrl → Error con prefijo [ngx-products-3d] y mensaje accionable",
+        "Validación es fn pura con tests N1 (camino feliz + ambos faltantes)",
         "pnpm build termina sin errores",
         "pnpm ng lint ngx-products-3d termina sin errores",
         "pnpm ng test ngx-products-3d muestra > 0 tests y todos verdes"
       ],
-      "status": "done"
+      "status": "pending"
+    },
+    {
+      "id": 9,
+      "name": "playground-complete",
+      "title": "Playground final: form, selector de temas y fallback de tier",
+      "spec": "spec-03",
+      "phase": 5,
+      "depends_on": [7],
+      "description": "En products-3d-playground/badge-demo: form con name (input), memberNumber (input) y tier (select) que actualizan el signal member; selector de 2+ temas de ejemplo (assets demo en public/assets/) que cambia el signal theme; conservar el toggle de debug física existente. Verificación visual de fallback: elegir un tier desconocido debe mostrar defaultBaseTextureUrl. SOLO playground (nunca dependencias nuevas en la lib; Tweakpane sigue prohibido salvo que se decida explícitamente).",
+      "acceptance": [
+        "Form (name/memberNumber/tier) actualiza la tarjeta reactivamente sin recrear canvas",
+        "Selector de >=2 temas cambia texturas/colores en vivo",
+        "Tier desconocido en el form muestra la textura default (fallback visible)",
+        "Toggle de debug física sigue funcionando",
+        "pnpm ng build products-3d-playground termina sin errores",
+        "pnpm build termina sin errores",
+        "pnpm ng lint ngx-products-3d termina sin errores",
+        "pnpm ng test ngx-products-3d muestra > 0 tests y todos verdes"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": 10,
+      "name": "readme-docs",
+      "title": "README público completo + contrato GLB",
+      "spec": "spec-03",
+      "phase": 5,
+      "depends_on": [8],
+      "description": "README de la lib: instalación + peers (three, angular-three*, rapier, meshline, soba); quickstart con <products-3d-badge> envuelto en @defer (on viewport) + @placeholder (contrato SSR de spec-01 T6, y provideNgtRenderer en providers de ruta); provideProducts3d({ cardModelUrl }) + provideProducts3dBadgeTheme(...); tabla completa de Products3dBadgeTheme (todos los campos, opcionales, defaults); contrato del GLB (nodos card/clip/clamp, materiales base/metal, origen, escala, Draco) para equipos que regeneren el modelo; nota de peso (Rapier WASM + Three) y por qué defer es obligatorio. Documentar también la exportación de Products3dBadgeScene para canvas propio.",
+      "acceptance": [
+        "README con instalación, peers, quickstart @defer + provideNgtRenderer, ambos provide*, tabla de tema, contrato GLB y nota de peso/defer",
+        "Ejemplos de código del README compilan contra la API pública real (sin deep imports)",
+        "pnpm build termina sin errores",
+        "pnpm ng lint ngx-products-3d termina sin errores",
+        "pnpm ng test ngx-products-3d muestra > 0 tests y todos verdes"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": 11,
+      "name": "publish-package",
+      "title": "Publicación del paquete + smoke test externo (Fase 6, cierre)",
+      "spec": "spec-03",
+      "phase": 6,
+      "depends_on": [9, 10],
+      "description": "Cierre/publicación (outward-facing, requiere go explícito del usuario): verificar sideEffects: false y rangos peer reales en el package.json de la lib; pnpm build (o nx build) ngx-products-3d; npm publish dist/ngx-products-3d (mismo pipeline que ngx-supabase-auth). Smoke test: instalar el paquete publicado en una app externa mínima y comprobar que el badge renderiza. NOTA: la publicación real la ejecuta/autoriza el usuario; el implementer prepara y verifica todo lo previo (config del package, build limpio, dry-run) pero no publica sin autorización.",
+      "acceptance": [
+        "package.json de la lib con sideEffects: false y rangos peer correctos (verificado)",
+        "npm publish --dry-run limpio (tarball con fesm2022, tipos y package.json correctos)",
+        "Smoke test documentado: app externa mínima consumiendo el paquete renderiza el badge",
+        "Publicación real ejecutada solo tras autorización explícita del usuario",
+        "pnpm build termina sin errores",
+        "pnpm ng lint ngx-products-3d termina sin errores",
+        "pnpm ng test ngx-products-3d muestra > 0 tests y todos verdes"
+      ],
+      "status": "pending"
     }
   ]
 }
