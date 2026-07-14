@@ -1,3 +1,55 @@
+// La escena importa ahora angular-three-soba/staging (NgtsRenderTexture) vía el propio componente
+// y Products3dBadgeTexture, y staging arrastra módulos (lottie de three, troika, gainmap) que en
+// tiempo de carga crean un <canvas> y piden getContext('2d'); jsdom devuelve null → la suite entera
+// falla al IMPORTAR (0 tests). Mismo stub inerte de contexto 2D que badge.component.spec.ts
+// (patrón ya aceptado en review; vi.hoisted corre antes que los imports estáticos). Solo test env.
+vi.hoisted(() => {
+	const canvasProto = globalThis.HTMLCanvasElement?.prototype;
+	if (!canvasProto) {
+		return;
+	}
+	const originalGetContext = canvasProto.getContext;
+	canvasProto.getContext = function (
+		this: HTMLCanvasElement,
+		contextId: string,
+		...args: unknown[]
+	): unknown {
+		if (contextId !== '2d') {
+			return originalGetContext.apply(this, [contextId, ...args] as never);
+		}
+		const backing: Record<string, unknown> = {};
+		const imageData = (width = 1, height = 1) => ({
+			data: new Uint8ClampedArray(Math.max(1, width * height * 4)),
+			width,
+			height,
+		});
+		return new Proxy(backing, {
+			get: (target, prop) => {
+				if (prop in target) {
+					return target[prop as string];
+				}
+				switch (prop) {
+					case 'canvas':
+						return this;
+					case 'measureText':
+						return () => ({ width: 0 });
+					case 'getImageData':
+						return (_x: number, _y: number, w = 1, h = 1) => imageData(w, h);
+					case 'createImageData':
+						return (w = 1, h = 1) => imageData(w, h);
+					default:
+						// Cualquier otro método del contexto 2D (fillRect, fillText, drawImage, save…) → noop.
+						return () => undefined;
+				}
+			},
+			set: (target, prop, value) => {
+				target[prop as string] = value;
+				return true;
+			},
+		});
+	} as typeof canvasProto.getContext;
+});
+
 import { signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { NGT_STORE, type NgtSize } from 'angular-three';
@@ -16,7 +68,14 @@ import type {
 	Products3dConfig,
 } from '../types';
 import { Products3dBadgeScene } from './badge-scene.component';
-import { BADGE_BAND, BADGE_LAYOUT, BADGE_MATERIAL_DEFAULTS, BADGE_PHYSICS } from './badge.config';
+import {
+	BADGE_BAND,
+	BADGE_LAYOUT,
+	BADGE_MAP_ANISOTROPY,
+	BADGE_MATERIAL_DEFAULTS,
+	BADGE_PHYSICS,
+	BADGE_TEXTURE,
+} from './badge.config';
 
 // Neutraliza el loader de soba: en jsdom sin WebGL no se debe cargar el GLB. Se captura la
 // URL que el componente deriva del config (vía la fn de entrada) para verificar que NO está
@@ -53,6 +112,7 @@ interface SceneInternals {
 	gltfData: () => unknown;
 	bandMap: () => unknown;
 	materialOpts: () => BadgePhysicalMaterialOptions;
+	renderTextureOptions: { width: number; height: number; frames: number; anisotropy: number };
 	bandColor: () => string;
 	resolution: () => Vector2;
 	bodyOptions: Partial<NgtrRigidBodyOptions>;
@@ -231,6 +291,20 @@ describe('Products3dBadgeScene', () => {
 		expect(opts.roughness).toBe(0.9);
 		expect(opts.clearcoat).toBe(BADGE_MATERIAL_DEFAULTS.clearcoat);
 		expect(opts.metalness).toBe(BADGE_MATERIAL_DEFAULTS.metalness);
+	});
+
+	it('derives the render texture options from BADGE_TEXTURE and BADGE_MAP_ANISOTROPY', () => {
+		const fixture = createScene();
+
+		// Config-driven, cero números mágicos: width/height = size del FBO; frames continuo
+		// (porqué documentado en BADGE_TEXTURE.frames); anisotropy va en las options porque
+		// es propiedad de la textura (fbo.texture), no del material.
+		expect(internalsOf(fixture).renderTextureOptions).toEqual({
+			width: BADGE_TEXTURE.size,
+			height: BADGE_TEXTURE.size,
+			frames: BADGE_TEXTURE.frames,
+			anisotropy: BADGE_MAP_ANISOTROPY,
+		});
 	});
 
 	it('exposes the lanyard band material config from BADGE_BAND (no magic numbers)', () => {

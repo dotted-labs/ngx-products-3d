@@ -77,6 +77,73 @@ export const BADGE_CARD_PLACEHOLDER = {
 export const BADGE_TEXTURE = {
 	/** Resolución de la RenderTexture del frente de la tarjeta */
 	size: 2000,
+	/**
+	 * Frames que renderiza la RenderTexture: `Infinity` = re-render continuo (un render del
+	 * frente por frame del canvas). NO se usa `frames: 1` (render estático): el contador de
+	 * frames del NgtsRenderTextureContainer de soba solo se resetea cuando se re-ejecuta su
+	 * effect (trackea renderPriority y el store del portal, p. ej. el makeDefault de la cámara);
+	 * el montaje async del contenido (textura base, fuente del Text3D) y los cambios de
+	 * member/theme NO lo resetean → el frente quedaría en blanco/congelado
+	 * (angular-three-soba/fesm2022/angular-three-soba-staging.mjs:3132-3159). Coste asumido y
+	 * documentado (spec-03 Fase 4): un render extra de una escena mínima (plano + 3 textos) a un
+	 * FBO de `size`² por frame — mismo patrón que el ejemplo lanyard de drei (RenderTexture sin
+	 * `frames`, default Infinity).
+	 */
+	frames: Infinity,
+	/** Posición de la cámara propia (makeDefault) de la escena de textura */
+	cameraPosition: [0, 0, 5] as [number, number, number],
+	/** Tamaño (ancho, alto) del plano de fondo; cubre el encuadre de la cámara a z=0 */
+	planeSize: [5, 5] as [number, number],
+} as const;
+
+/** Campo de `BadgeMemberData` que pinta cada slot de texto del frente de la tarjeta */
+export type BadgeTextField = 'name' | 'memberNumber' | 'tier';
+
+/**
+ * Un slot de texto del frente de la tarjeta (escena de textura, spec-03 feature 6).
+ * Tuplas mutables a propósito: los inputs de soba (`NgtsText3D.options`) no admiten
+ * `readonly` (mismo criterio que `BadgeLightformerOptions`). Exportado para que los
+ * `.d.ts` de la lib puedan nombrar el tipo de `BADGE_TEXT_LAYOUT` (evita TS4029).
+ */
+export interface BadgeTextSlot {
+	field: BadgeTextField;
+	position: [number, number, number];
+	rotation: [number, number, number];
+	/** Tamaño de la fuente (TextGeometry `size`, unidades de mundo de la escena de textura) */
+	size: number;
+	/** Profundidad de extrusión del texto (TextGeometry `height`) */
+	height: number;
+}
+
+/**
+ * Layout data-driven de los textos del socio sobre el frente de la tarjeta: la escena de
+ * textura solo itera este array (reordenar/ajustar slots NO toca el componente). La z
+ * positiva (0.01) separa los textos del plano de fondo (evita z-fighting). Valores de
+ * arranque plausibles; el ajuste fino visual llega con la RenderTexture (feature 7, N3).
+ */
+export const BADGE_TEXT_LAYOUT: BadgeTextSlot[] = [
+	{ field: 'name', position: [-1.8, 0.6, 0.01], rotation: [0, 0, 0], size: 0.45, height: 0.05 },
+	{
+		field: 'memberNumber',
+		position: [-1.8, -0.2, 0.01],
+		rotation: [0, 0, 0],
+		size: 0.3,
+		height: 0.05,
+	},
+	{ field: 'tier', position: [-1.8, -0.9, 0.01], rotation: [0, 0, 0], size: 0.25, height: 0.05 },
+];
+
+/** Textos del frente de la tarjeta: formato y encaje (spec-03 feature 6) */
+export const BADGE_TEXT = {
+	/** Prefijo del número de socio (`#1234`) */
+	memberNumberPrefix: '#',
+	/**
+	 * Ancho máximo (unidades de mundo de la escena de textura) de cada texto antes de
+	 * escalarlo hacia abajo (nombres largos). Nunca agranda (clamp a <=1, ver `fitTextScale`).
+	 */
+	maxWidth: 3.6,
+	/** Color fallback del texto cuando `theme.colors.text` no está definido */
+	color: 'black',
 } as const;
 
 /** Defaults del meshPhysicalMaterial de la tarjeta (spec-03; override vía theme.material) */
@@ -91,9 +158,10 @@ export const BADGE_MATERIAL_DEFAULTS = {
 
 /**
  * Filtrado anisotrópico del `map` de la tarjeta (nitidez del frente en ángulos rasantes).
- * Es una propiedad de la textura, no de MeshPhysicalMaterial → vive fuera de
- * BADGE_MATERIAL_DEFAULTS. Surte efecto cuando el map real (RenderTexture) se monta en la
- * feature 7; aquí se declara para no dejar el 16 suelto en el componente.
+ * Es una propiedad de la TEXTURA, no de MeshPhysicalMaterial → vive fuera de
+ * BADGE_MATERIAL_DEFAULTS y se pasa en las options del NgtsRenderTexture, que las aplica
+ * como parameters sobre `fbo.texture` (el map real). Un binding [mapAnisotropy] sobre el
+ * material sería un no-op: el renderer de angular-three solo "pierce" claves con punto.
  */
 export const BADGE_MAP_ANISOTROPY = 16;
 

@@ -24,17 +24,18 @@ import {
 		:host {
 			display: block;
 			padding: 1rem;
+            height: 97vh;
 		}
 
 		products-3d-badge,
 		.badge-placeholder {
-			height: 32rem;
+			height: 100%;
 		}
 
 		/* Fondo oscuro: el placeholder blanco de la tarjeta es invisible sobre blanco */
 		products-3d-badge {
 			display: block;
-			background: #1f2937;
+			background: hsl(215deg 32.02% 1.31% / 96%);
 			border-radius: 0.5rem;
 		}
 
@@ -58,16 +59,16 @@ export class BadgeDemoComponent {
 	readonly member = signal<BadgeMemberData>({
 		name: 'Sergio',
 		memberNumber: '0042',
-		tier: 'gold',
+		tier: 'silverFUnc',
 	});
 
 	readonly theme = signal<Products3dBadgeTheme>({
-		bandTextureUrl: '/assets/band.jpg',
+		bandTextureUrl: '/assets/band.png',
 		baseTextures: {
-			gold: '/assets/base-gold.jpg',
-			silver: '/assets/base-silver.jpg',
+			gold: '/assets/base-gold.png',
+			silver: '/assets/base-silver.png',
 		},
-		defaultBaseTextureUrl: '/assets/base-default.jpg',
+		defaultBaseTextureUrl: '/assets/base-default.png',
 		fontUrl: '/assets/font.json',
 	});
 }

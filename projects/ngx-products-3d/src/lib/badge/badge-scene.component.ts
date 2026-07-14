@@ -30,6 +30,7 @@ import {
 	type NgtrSphericalJointParams,
 } from 'angular-three-rapier';
 import { gltfResource, textureResource } from 'angular-three-soba/loaders';
+import { NgtsRenderTexture, type NgtsRenderTextureOptions } from 'angular-three-soba/staging';
 import { MeshLineGeometry, MeshLineMaterial } from 'meshline';
 import { resourceValueOrUndefined } from '../resource-value';
 import { PRODUCTS_3D_CONFIG } from '../tokens';
@@ -38,6 +39,7 @@ import { cursorFor } from './badge-cursor';
 import { projectPointerToWorld, subtractInto } from './badge-drag';
 import { mergeMaterialOptions, tintMetalMaterial } from './badge-material';
 import { lerpTowards, spinCorrectedAngvelY } from './badge-stabilize';
+import { Products3dBadgeTexture } from './badge-texture.component';
 import {
 	BADGE_BAND,
 	BADGE_DRAG,
@@ -45,6 +47,7 @@ import {
 	BADGE_MAP_ANISOTROPY,
 	BADGE_MATERIAL_DEFAULTS,
 	BADGE_PHYSICS,
+	BADGE_TEXTURE,
 } from './badge.config';
 
 // Registra los elementos custom de meshline (<ngt-mesh-line-geometry>,
@@ -122,8 +125,7 @@ interface BadgeGLTF {
 				meshPhysicalMaterial (clearcoat) en vez del material 'base' del GLB; se preserva la
 				transformación local del nodo card (offset y=-1.45 del GLB) porque su geometría va
 				centrada en el origen. clip/clamp siguen como primitive con su material 'metal'; el
-				tinte opcional del metal se aplica por código en un effect (ver metalEffect). El
-				[map] del frente (RenderTexture) llega en la feature 7.
+				tinte opcional del metal se aplica por código en un effect (ver metalEffect).
 			-->
 			@if (gltfData(); as data) {
 				<ngt-group [position]="cardAnchor">
@@ -134,14 +136,32 @@ interface BadgeGLTF {
 						[scale]="data.nodes.card.scale"
 					>
 						<ngt-mesh-physical-material
-							[mapAnisotropy]="mapAnisotropy"
 							[clearcoat]="materialOpts().clearcoat"
 							[clearcoatRoughness]="materialOpts().clearcoatRoughness"
 							[roughness]="materialOpts().roughness"
 							[metalness]="materialOpts().metalness"
 							[iridescence]="materialOpts().iridescence"
 							[iridescenceIOR]="materialOpts().iridescenceIOR"
-						/>
+						>
+							<!--
+								Frente dinámico de la tarjeta: NgtsRenderTexture se attachea como map del
+								material (attach="map") y renderiza la escena secundaria
+								(Products3dBadgeTexture: textura base del tier + textos del socio, con su
+								propia cámara makeDefault dentro del portal) a un FBO de BADGE_TEXTURE.size².
+								anisotropy va en las options y NO como binding del material: es propiedad de
+								la textura (soba la aplica como parameters sobre fbo.texture); el binding
+								[mapAnisotropy] de la feature 3 era un no-op (el renderer solo "pierce"
+								claves con punto). Reactividad member/theme: el contenido del template lee
+								los inputs (signals) de esta escena y, con frames continuo (porqué en
+								BADGE_TEXTURE.frames), cada cambio se pinta en el frame siguiente sin
+								recrear el canvas.
+							-->
+							<ngts-render-texture attach="map" [options]="renderTextureOptions">
+								<ng-template renderTextureContent>
+									<products-3d-badge-texture [member]="member()" [theme]="theme()" />
+								</ng-template>
+							</ngts-render-texture>
+						</ngt-mesh-physical-material>
 					</ngt-mesh>
 					<ngt-primitive *args="[data.nodes.clip]" />
 					<ngt-primitive *args="[data.nodes.clamp]" />
@@ -171,7 +191,14 @@ interface BadgeGLTF {
 			/>
 		</ngt-mesh>
 	`,
-	imports: [NgtArgs, NgtrRigidBody, NgtrBallCollider, NgtrCuboidCollider],
+	imports: [
+		NgtArgs,
+		NgtrRigidBody,
+		NgtrBallCollider,
+		NgtrCuboidCollider,
+		NgtsRenderTexture,
+		Products3dBadgeTexture,
+	],
 	schemas: [CUSTOM_ELEMENTS_SCHEMA],
 	changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -206,10 +233,17 @@ export class Products3dBadgeScene {
 	 */
 	protected readonly cardAnchor = BADGE_PHYSICS.cardJointAnchor;
 	/**
-	 * Filtrado anisotrópico del frente de la tarjeta. Se bindea al meshPhysicalMaterial ya; su
-	 * efecto real llega con el `map` (RenderTexture) de la feature 7 (ver BADGE_MAP_ANISOTROPY).
+	 * Options del NgtsRenderTexture del frente de la tarjeta, todas desde config: tamaño del
+	 * FBO (BADGE_TEXTURE.size), frames continuo (porqué frente a frames:1 en
+	 * BADGE_TEXTURE.frames) y anisotropy (propiedad de la TEXTURA — soba la aplica sobre
+	 * fbo.texture —, no del material; ver BADGE_MAP_ANISOTROPY).
 	 */
-	protected readonly mapAnisotropy = BADGE_MAP_ANISOTROPY;
+	protected readonly renderTextureOptions: Partial<NgtsRenderTextureOptions> = {
+		width: BADGE_TEXTURE.size,
+		height: BADGE_TEXTURE.size,
+		frames: BADGE_TEXTURE.frames,
+		anisotropy: BADGE_MAP_ANISOTROPY,
+	};
 
 	private readonly config = inject(PRODUCTS_3D_CONFIG);
 	/**

@@ -1,25 +1,28 @@
 # Sesión actual
 
-- **Fecha**: 2026-07-13
+- **Fecha**: 2026-07-14
 - **Spec**: spec-03 (badge — GLB, materiales, textura dinámica, theming, API final)
-- **Fase**: 3 COMPLETA y verificada (N1/N2/N3). En pausa antes de Fase 4 (a petición del usuario).
+- **Fase**: —
 - **Rol**: leader (orquestación)
 
 ## Estado
 
-- spec-03 features 1–5 → **done**. Fase 3 verificada visualmente (re-smoke del usuario 2026-07-13: badge visible al cargar).
-- Bug de render inicial resuelto: assets reales del playground (PNG + font helvetiker) + endurecimiento de
-  acceso a recursos en la lib (`resourceValueOrUndefined`, gate `hasValue()`) + `provideZonelessChangeDetection()`.
-- Deps de soba instaladas (autorizadas): gainmap-js, @pmndrs/vanilla, three-mesh-bvh, troika-three-text.
-  Pendiente feature 11: declararlas como peers opcionales del paquete + README.
-- Build/lint/test 59/playground verdes.
+- Feature 7 `badge-rendertexture-map` cerrada `done` (review aprobada + N3 del usuario ✅;
+  resumen movido a `progress/history.md`). **Fase 4 de spec-03 completa.**
+- OJO: cambios de las features 6 y 7 aún SIN commitear en el working tree (el usuario no ha
+  pedido commit).
+- Siguiente feature por protocolo: **8 `badge-theme-validation`** (pending, depende de 6 ✅).
+  No iniciada — esperar orden del usuario.
+- Nota del usuario (seguimiento): en el futuro, temas con assets mucho más potentes que los
+  PNGs demo actuales (relevante para features 9/10).
+- Housekeeping pendiente: stub canvas 2D duplicado → setupFiles compartido de vitest;
+  CRLF de badge.config.ts; líneas >100 chars preexistentes en zonas committeadas.
 
-## Próximo (pendiente de orden del usuario — NO iniciar sin luz verde)
+## Plan
 
-- Fase 4 — feature 6 `badge-texture-scene` (Text3D del socio + textura base por tier → escena secundaria
-  para la RenderTexture). Depende de 1 ✅. font.json real (helvetiker) y base-*.png ya disponibles.
-- Luego: 7 (RenderTexture como map), 8 (validación tema), 9 (playground final), 10 (README), 11 (publish).
+- (vacío — sin tarea en curso)
 
 ## Log
 
-- Fase 3 cerrada (N1/N2/N3). Usuario pidió parar antes de la feature 6. Sesión en pausa.
+- 2026-07-14: feature 7 cerrada `done` tras N3 del usuario (4/4). Verificación final del
+  leader: build ✅ · lint ✅ · test 69/69 ✅.
