@@ -155,6 +155,31 @@ describe('Products3dBadge', () => {
 		);
 	});
 
+	describe('theme validation (assertValidBadgeTheme on the resolved theme)', () => {
+		// El input [theme] pisa al provider sin merge, así que la validación cubre ambas fuentes
+		function themeWithout(field: 'defaultBaseTextureUrl' | 'fontUrl'): Products3dBadgeTheme {
+			const theme: Record<string, unknown> = { ...makeTheme('assets/font.json') };
+			delete theme[field];
+			return theme as unknown as Products3dBadgeTheme;
+		}
+
+		it('throws an actionable prefixed error when the [theme] input lacks defaultBaseTextureUrl', () => {
+			const fixture = createBadge({ inputTheme: themeWithout('defaultBaseTextureUrl') });
+
+			expect(() => resolvedThemeOf(fixture)).toThrowError(
+				/\[ngx-products-3d\] badge: al tema le falta defaultBaseTextureUrl/,
+			);
+		});
+
+		it('throws an actionable prefixed error when the token theme lacks fontUrl', () => {
+			const fixture = createBadge({ tokenTheme: themeWithout('fontUrl') });
+
+			expect(() => resolvedThemeOf(fixture)).toThrowError(
+				/\[ngx-products-3d\] badge: al tema le falta fontUrl/,
+			);
+		});
+	});
+
 	describe('physics options', () => {
 		it('defaults the debug input to false', () => {
 			const fixture = createBadge({ inputTheme: makeTheme('assets/font.json') });

@@ -14,6 +14,7 @@ import { NgtsEnvironment, NgtsLightformer } from 'angular-three-soba/staging';
 import { PRODUCTS_3D_BADGE_THEME } from '../tokens';
 import type { BadgeMemberData, Products3dBadgeTheme } from '../types';
 import { Products3dBadgeScene } from './badge-scene.component';
+import { assertValidBadgeTheme } from './badge-theme';
 import { BADGE_CAMERA, BADGE_LIGHTING, BADGE_PHYSICS } from './badge.config';
 
 /**
@@ -102,6 +103,9 @@ export class Products3dBadge {
 		debug: this.debug(),
 	}));
 
+	// Validación temprana: este computed se evalúa en el primer CD del wrapper (binding
+	// [theme] de la escena), antes de cargar recursos o arrancar el loop de render. Un tema
+	// inválido revienta aquí con Error accionable, nunca a mitad de frame ni en silencio.
 	protected readonly resolvedTheme = computed<Products3dBadgeTheme>(() => {
 		const theme = this.theme() ?? this.themeFromToken;
 		if (!theme) {
@@ -109,6 +113,6 @@ export class Products3dBadge {
 				'[ngx-products-3d] badge: no theme. Pasa [theme] o provideProducts3dBadgeTheme()',
 			);
 		}
-		return theme;
+		return assertValidBadgeTheme(theme);
 	});
 }
