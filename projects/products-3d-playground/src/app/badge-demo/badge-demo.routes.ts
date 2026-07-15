@@ -12,12 +12,12 @@ export const badgeDemoRoutes: Routes = [
 			provideNgtRenderer(),
 			provideProducts3d({ cardModelUrl: '/assets/card.glb' }),
 			provideProducts3dBadgeTheme({
-				bandTextureUrl: '/assets/band.jpg',
+				bandTextureUrl: '/assets/band.png',
 				baseTextures: {
-					gold: '/assets/base-gold.jpg',
-					silver: '/assets/base-silver.jpg',
+					gold: '/assets/base-gold.png',
+					silver: '/assets/base-silver.png',
 				},
-				defaultBaseTextureUrl: '/assets/base-default.jpg',
+				defaultBaseTextureUrl: '/assets/base-default.png',
 				fontUrl: '/assets/font.json',
 			}),
 		],
