@@ -167,7 +167,7 @@
         "pnpm ng lint ngx-products-3d termina sin errores",
         "pnpm ng test ngx-products-3d muestra > 0 tests y todos verdes"
       ],
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": 10,
@@ -184,7 +184,7 @@
         "pnpm ng lint ngx-products-3d termina sin errores",
         "pnpm ng test ngx-products-3d muestra > 0 tests y todos verdes"
       ],
-      "status": "pending"
+      "status": "done"
     },
     {
       "id": 11,
