@@ -76,7 +76,8 @@ jobs:
 
       - name: Publish to npm
         run: |
-          cp README.md dist/ngx-products-3d/
+          # ng-packagr ya copia el README público de la lib (projects/ngx-products-3d/README.md)
+          # a dist; NO sobreescribir con el README de la raíz. Solo añadimos la licencia.
           cp LICENSE dist/ngx-products-3d/
           cd dist/ngx-products-3d && pnpm publish --access public --no-git-checks
         env:
