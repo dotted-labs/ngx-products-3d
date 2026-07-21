@@ -28,9 +28,9 @@ Todo lo 3D son `peerDependencies` (la lib solo depende de `tslib`):
 | `angular-three` | `^4.0.0` |
 | `angular-three-soba` | `^4.0.0` |
 | `angular-three-rapier` | `^4.0.0` |
-| `@dimforge/rapier3d-compat` | `>=0.14.0` |
-| `three` | `>=0.174.0` |
-| `meshline` | `^3.0.0` |
+| `@dimforge/rapier3d-compat` | `>=0.14.0 <0.20.0` |
+| `three` | `>=0.174.0 <0.183.0` |
+| `meshline` | `^3.1.0` |
 | `ngxtension` | `>=5.0.0` |
 
 ## Peso: por qué `@defer` es obligatorio
