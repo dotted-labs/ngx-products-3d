@@ -7,7 +7,7 @@
 
 ## Estado
 
-- Feature 11 `publish-package` → `in_progress`.
+- Feature 11 `publish-package` → `done` (0.2.1 publicada en npm por CI). spec-03 completada.
 - Baseline verificado al arrancar: `pnpm build` OK, lint OK, tests 76/76 verdes.
 - Alcance de esta sesión: TODO lo previo a publicar (package.json de la lib:
   sideEffects + peers; build limpio; `npm publish --dry-run`; smoke test
@@ -57,3 +57,18 @@
   no"**. Feature 11 queda `in_progress`, todo lo previo APROBADO y listo. Falta
   únicamente: (a) checklist visual en navegador §6b [manual], (b) GO explícito
   para `cd dist/ngx-products-3d && npm publish`. NO publicar sin ese GO.
+- 2026-07-21 — GO del usuario. La publicación acabó haciéndose por **CI**, no en
+  local: al mergear la PR #5 (`feat/angular-components`) a `main`, el workflow
+  `.github/workflows/release-publish.yml` detectó el bump y publicó
+  **0.2.0** con el `NPM_TOKEN` del repo (el intento de `npm publish` local falló
+  antes por token caducado + permisos: el paquete lo posee `luismdev`, no `gunsr`).
+- 2026-07-21 — detectado bug en el workflow: `cp README.md` copiaba el README
+  corto de la raíz (4.1 kB) sobre el README público completo (14 kB) que
+  ng-packagr ya deja en dist → **0.2.0 se publicó con el README equivocado**.
+  Fix del workflow (quitar ese `cp`, dejar solo `cp LICENSE`) + bump a **0.2.1**
+  vía PR #6 → merge a `main` → CI publicó **0.2.1** con el README correcto
+  (13.7 kB) + LICENSE. Registry: `[0.1.0, 0.1.1, 0.2.0, 0.2.1]`, `latest: 0.2.1`.
+- 2026-07-21 — **Feature 11 `done`** por instrucción explícita del usuario de
+  cerrar la tarea (review APROBADA + publicación 0.2.1 verificada en registry).
+  Residual no bloqueante: checklist visual en navegador §6b [manual], cubierto por
+  equivalencia con el render N3 de F9/F10. **spec-03 completada.**
