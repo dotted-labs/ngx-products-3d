@@ -87,7 +87,7 @@ export class Products3dBadgeTexture {
 	/**
 	 * Textura base del frente. `ResourceRef` de soba → gate a `hasValue()` vía `baseMap()`.
 	 * El tipo resuelto es `Texture` de three (peer, nombrable) → sin cast (mismo criterio
-	 * que la textura de la correa; ver gotcha three-stdlib en docs/spike-notes-03.md).
+	 * que la textura de la correa; ver gotcha three-stdlib en docs/spikes/spike-notes-03.md).
 	 */
 	protected readonly baseTexture = textureResource(() => this.baseTextureUrl());
 

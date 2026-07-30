@@ -18,7 +18,7 @@ grep -ri "ropeJoint\|sphericalJoint\|RopeJoint\|SphericalJoint" node_modules/ang
 
 Resultados posibles:
 
-- **A) Existen fns de joints** (estilo `injectRopeJoint`/`ropeJoint`): usarlas. Documentar firma exacta en `docs/spike-notes.md`.
+- **A) Existen fns de joints** (estilo `injectRopeJoint`/`ropeJoint`): usarlas. Documentar firma exacta en `docs/spikes/spike-notes-02.md`.
 - **B) No existen**: implementar wrapper propio en `badge/src/lib/joints.ts` usando el mundo Rapier crudo:
 
 ```ts
@@ -51,7 +51,7 @@ extend({ MeshLineGeometry, MeshLineMaterial });
 
 Verificar que `<ngt-mesh-line-geometry>` y `<ngt-mesh-line-material>` renderizan (elementos custom → `CUSTOM_ELEMENTS_SCHEMA`). Probar `setPoints()` sobre la geometría desde `beforeRender`. Si meshline da fricción con three >=0.174, alternativa: `THREE.TubeGeometry` regenerada por frame (peor perf; solo fallback).
 
-Salida del spike: `docs/spike-notes.md` con API confirmada. Si S1 = caso B, `joints.ts` implementado y testeado con dos cubos unidos.
+Salida del spike: `docs/spikes/spike-notes-02.md` con API confirmada. Si S1 = caso B, `joints.ts` implementado y testeado con dos cubos unidos.
 
 ## Fase 1 — Cadena física + correa + drag
 
@@ -230,7 +230,7 @@ Drag agresivo sin jitter visible. Tarjeta vuelve a orientación frontal tras sol
 
 ## Criterios de aceptación
 
-- [ ] Spike documentado en `docs/spike-notes.md`; joints funcionando (API nativa o wrapper)
+- [ ] Spike documentado en `docs/spikes/spike-notes-02.md`; joints funcionando (API nativa o wrapper)
 - [ ] Correa curva suave 32 puntos, sin allocations por frame (verificar con profiler: sin GC spikes)
 - [ ] Drag: pointer capture, kinematic switch, wakeUp de cadena
 - [ ] Anti-jitter y anti-giro activos, valores desde config
