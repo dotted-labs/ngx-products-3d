@@ -214,7 +214,7 @@ export class Products3dBadgeScene {
 	private readonly cardBody = viewChild.required('cardBody', { read: NgtrRigidBody });
 
 	// nativeElement ES la instancia MeshLineGeometry (el renderer v4 auto-attachea
-	// la BufferGeometry a mesh.geometry); ver docs/spike-notes.md §S2.
+	// la BufferGeometry a mesh.geometry); ver docs/spikes/spike-notes-02.md §S2.
 	private readonly bandGeometry = viewChild.required<ElementRef<MeshLineGeometry>>('bandGeometry');
 
 	/**

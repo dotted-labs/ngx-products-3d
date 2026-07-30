@@ -25,6 +25,9 @@
 | `docs/architecture.md`       | Qué significa "hacer un buen trabajo" en este proyecto    | Antes de implementar |
 | `docs/conventions.md`        | Reglas de estilo, nombres, estructura                     | Antes de escribir código |
 | `docs/verification.md`       | Cómo verificar que tu trabajo funciona                    | Antes de declarar una tarea como `done` |
+| `docs/specs/active/`         | **La spec en curso** (máx. 1). **Fuente de verdad del trabajo actual**. Vacía = nada en curso: pregunta, no inventes | Siempre, antes de implementar una fase |
+| `docs/specs/`  (raíz)        | Archivo de specs ya **completadas** (`spec-<nn>-*.md`)    | Solo como contexto histórico |
+| `docs/spikes/`               | Salida consolidada de los spikes (`spike-notes-<nn>.md`): APIs verificadas en `node_modules`, decisiones y gotchas | Antes de usar una API de angular-three/soba/rapier |
 | `CHECKPOINTS.md`             | Criterios objetivos de "estado final correcto"            | Para auto-evaluarte |
 | `.claude/agents/`            | Definiciones de subagentes (líder, implementador, revisor) | Si orquestas trabajo |
 | `projects/ngx-products-3d/src/lib/` | Código de la librería (`@dotted-labs/ngx-products-3d`) | Para implementar |

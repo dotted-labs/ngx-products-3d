@@ -16,8 +16,8 @@
       "depends_on": [],
       "description": "Verificar en node_modules/angular-three-soba (*.d.ts) y docs las firmas EXACTAS de: gltfResource/textureResource (loaders) y patrón de consumo (.value(), estado de carga, tipos genéricos); NgtsRenderTexture (staging) — selector, directiva de contenido (¿*renderTextureContent?), camera content (¿cameraContent?), opciones exactas (width/height/attach/frames — ¿existe render estático frames:1?); NgtsText3D (abstractions) — inputs, cómo se pasa fontUrl, medición de bounding box; NgtsEnvironment + NgtsLightformer (staging) — inputs (background, blur, intensity, position, rotation, scale); NgtsRoundedBox (abstractions) — args; ajuste de nombre largo: ¿existe NgtsResize en soba v4 o solo NgtsCenter? (grep confirmó Center, NO Resize) → decidir fallback geometry.computeBoundingBox()+scale. Además: inspeccionar projects/products-3d-playground/public/assets/card.glb (con three GLTFLoader en un script Node o inspector) → ¿cumple el contrato de nodos 'card'/'clip'/'clamp' y materiales 'base'/'metal' de spec-03? ¿usa Draco? Decidir GLB real vs geometría procedural provisional (RoundedBox + torus). BLOQUEANTE para features 2+.",
       "acceptance": [
-        "docs/spike-notes-03.md documenta firmas exactas de cada API soba usada (con ruta node_modules:línea) y la decisión Resize vs bounding-box manual",
-        "docs/spike-notes-03.md documenta los nodos/materiales reales de card.glb y la decisión GLB-real vs procedural (y si Draco)",
+        "docs/spikes/spike-notes-03.md documenta firmas exactas de cada API soba usada (con ruta node_modules:línea) y la decisión Resize vs bounding-box manual",
+        "docs/spikes/spike-notes-03.md documenta los nodos/materiales reales de card.glb y la decisión GLB-real vs procedural (y si Draco)",
         "pnpm build termina sin errores",
         "pnpm ng lint ngx-products-3d termina sin errores",
         "pnpm ng test ngx-products-3d muestra > 0 tests y todos verdes"
