@@ -87,7 +87,7 @@ const MEMBER: BadgeMemberData = {
 
 function makeTheme(fontUrl: string): Products3dBadgeTheme {
 	return {
-		bandTextureUrl: 'assets/band.png',
+		bandTextureUrl: 'assets/band.jpg',
 		baseTextures: { gold: 'assets/gold.png' },
 		defaultBaseTextureUrl: 'assets/default.png',
 		fontUrl,

@@ -3,7 +3,7 @@ import { assertValidBadgeTheme } from './badge-theme';
 
 function makeTheme(overrides: Partial<Products3dBadgeTheme> = {}): Products3dBadgeTheme {
 	return {
-		bandTextureUrl: 'assets/band.png',
+		bandTextureUrl: 'assets/band.jpg',
 		baseTextures: { gold: 'assets/gold.png' },
 		defaultBaseTextureUrl: 'assets/default.png',
 		fontUrl: 'assets/font.json',

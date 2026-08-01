@@ -25,7 +25,7 @@ export const badgeRoute: Route = {
 	path: 'membership',
 	providers: [
 		provideNgtRenderer(),
-		provideProducts3d({ cardModelUrl: '/assets/3d/card.glb' }),
+		provideProducts3d({ cardModelUrl: '/assets/3d/membresia.glb' }),
 		provideProducts3dBadgeTheme({
 			bandTextureUrl: '/assets/3d/band.jpg',
 			baseTextures: {
@@ -65,7 +65,7 @@ Reglas:
 
 1. `@defer (on viewport)` u `on interaction` + `@placeholder` con imagen estática → LCP barato.
 2. `provideNgtRenderer()` (import de `angular-three/dom`) lo registra la app consumidora en los providers de la **ruta** que consume el badge (idealmente lazy, como en el quickstart), nunca en root: devuelve `EnvironmentProviders` y Angular no lo admite en providers de componente, así que la lib no puede aportarlo.
-3. Preload opcional de assets pesados: `<link rel="preload" as="fetch" href="/assets/3d/card.glb" crossorigin>`.
+3. Preload opcional de assets pesados: `<link rel="preload" as="fetch" href="/assets/3d/membresia.glb" crossorigin>`.
 4. El componente incluye guard `isPlatformBrowser` como cinturón — no sustituye a `@defer`.
 
 ## API
@@ -99,8 +99,12 @@ Geometría única para todos los temas. Requisitos:
 
 - Nodos nombrados: `card`, `clip`, `clamp`
 - Materiales nombrados: `base` (card, recibe textura dinámica), `metal` (clip + clamp)
-- Origen en el punto de anclaje del clip
+- Origen en el **centro de la tarjeta** (nodo `card` con transformación identidad); coincide con
+  el centro del collider físico
+- Punto de agarre de la correa = borde superior del `clip`, **y ≈ 1.286**
 - Transforms aplicados, Y-up, unidades métricas
+- El contrato completo (dimensiones, UVs, Draco) está en
+  [`projects/ngx-products-3d/README.md`](projects/ngx-products-3d/README.md#contrato-del-modelo-glb)
 
 ## Desarrollo
 

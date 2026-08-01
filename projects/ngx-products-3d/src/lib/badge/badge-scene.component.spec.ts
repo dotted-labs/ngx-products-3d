@@ -70,6 +70,8 @@ import type {
 import { Products3dBadgeScene } from './badge-scene.component';
 import {
 	BADGE_BAND,
+	BADGE_CAMERA,
+	BADGE_CARD_MODEL,
 	BADGE_LAYOUT,
 	BADGE_MAP_ANISOTROPY,
 	BADGE_MATERIAL_DEFAULTS,
@@ -106,13 +108,20 @@ interface SceneInternals {
 	dragged: () => boolean;
 	layout: typeof BADGE_LAYOUT;
 	band: typeof BADGE_BAND;
-	cardAnchor: typeof BADGE_PHYSICS.cardJointAnchor;
+	cardModelPosition: typeof BADGE_CARD_MODEL.groupPosition;
 	gltf: { value: () => unknown };
 	bandTexture: { value: () => unknown };
 	gltfData: () => unknown;
 	bandMap: () => unknown;
 	materialOpts: () => BadgePhysicalMaterialOptions;
-	renderTextureOptions: { width: number; height: number; frames: number; anisotropy: number };
+	renderTextureOptions: {
+		width: number;
+		height: number;
+		frames: number;
+		anisotropy: number;
+		repeat: [number, number];
+		offset: [number, number];
+	};
 	bandColor: () => string;
 	resolution: () => Vector2;
 	bodyOptions: Partial<NgtrRigidBodyOptions>;
@@ -129,14 +138,14 @@ const MEMBER: BadgeMemberData = {
 };
 
 const THEME: Products3dBadgeTheme = {
-	bandTextureUrl: 'assets/band.png',
+	bandTextureUrl: 'assets/band.jpg',
 	baseTextures: { gold: 'assets/gold.png' },
 	defaultBaseTextureUrl: 'assets/default.png',
 	fontUrl: 'assets/font.json',
 };
 
 const CONFIG: Products3dConfig = {
-	cardModelUrl: '/assets/card.glb',
+	cardModelUrl: '/assets/membresia.glb',
 };
 
 // Mock mínimo de NgtrPhysics para los hooks de joints (ropeJoint/sphericalJoint):
@@ -233,13 +242,34 @@ describe('Products3dBadgeScene', () => {
 		expect(internalsOf(fixture).layout).toBe(BADGE_LAYOUT);
 	});
 
-	it('positions the GLB visual group at the clip anchor (BADGE_PHYSICS.cardJointAnchor)', () => {
+	it('positions the GLB visual group at the rigid body origin (BADGE_CARD_MODEL.groupPosition)', () => {
 		const fixture = createScene();
 
-		// El grupo del GLB se sitúa en cardJointAnchor: alinea el centro de la tarjeta con el
-		// cuboid collider y el clip con el punto del spherical joint (sin offsets mágicos).
-		expect(internalsOf(fixture).cardAnchor).toBe(BADGE_PHYSICS.cardJointAnchor);
-		expect(internalsOf(fixture).cardAnchor).toBe(internalsOf(fixture).cardJointData.body2Anchor);
+		// El origen del GLB es el centro de la tarjeta = origen del body = centro del cuboid
+		// collider → el grupo visual va sin offset (constante propia, sin números mágicos).
+		expect(internalsOf(fixture).cardModelPosition).toBe(BADGE_CARD_MODEL.groupPosition);
+		expect(BADGE_CARD_MODEL.groupPosition).toEqual([0, 0, 0]);
+	});
+
+	it('keeps the visual anchor and the spherical joint anchor as separate values', () => {
+		const fixture = createScene();
+
+		// Regresión de la feature 13: ambos conceptos compartían BADGE_PHYSICS.cardJointAnchor,
+		// lo que ataba la posición del modelo al punto de agarre de la correa.
+		expect(internalsOf(fixture).cardModelPosition).not.toBe(
+			internalsOf(fixture).cardJointData.body2Anchor,
+		);
+		expect(BADGE_CARD_MODEL.groupPosition).not.toEqual(BADGE_PHYSICS.cardJointAnchor);
+	});
+
+	it('anchors the spherical joint above the card top edge (clip grab point of the GLB)', () => {
+		// Derivado del bounding box del GLB: clipMesh POSITION Y[0.917, 1.286] (top del clip,
+		// por donde el aro agarra la correa) y cardMesh Y[-1.125, 1.125] (= half-extent del
+		// cuboid). El anchor cae por encima del borde superior de la tarjeta, nunca dentro.
+		expect(BADGE_PHYSICS.cardJointAnchor).toEqual([0, 1.286, 0]);
+		expect(BADGE_PHYSICS.cardJointAnchor[1]).toBeGreaterThan(
+			BADGE_PHYSICS.cardColliderHalfExtents[1],
+		);
 	});
 
 	it('loads the card GLB from PRODUCTS_3D_CONFIG.cardModelUrl (no hardcoded URL)', () => {
@@ -297,14 +327,30 @@ describe('Products3dBadgeScene', () => {
 		const fixture = createScene();
 
 		// Config-driven, cero números mágicos: width/height = size del FBO; frames continuo
-		// (porqué documentado en BADGE_TEXTURE.frames); anisotropy va en las options porque
-		// es propiedad de la textura (fbo.texture), no del material.
+		// (porqué documentado en BADGE_TEXTURE.frames); anisotropy y la transformada UV van en
+		// las options porque son propiedades de la textura (fbo.texture), no del material.
 		expect(internalsOf(fixture).renderTextureOptions).toEqual({
 			width: BADGE_TEXTURE.size,
 			height: BADGE_TEXTURE.size,
 			frames: BADGE_TEXTURE.frames,
 			anisotropy: BADGE_MAP_ANISOTROPY,
+			repeat: BADGE_TEXTURE.mapRepeat,
+			offset: BADGE_TEXTURE.mapOffset,
 		});
+	});
+
+	it('samples the card map with the V inverted and the U untouched', () => {
+		const fixture = createScene();
+		const { repeat, offset } = internalsOf(fixture).renderTextureOptions;
+
+		// Invariante que corrige el choque de convenciones (ver BADGE_TEXTURE.mapRepeat): los UV
+		// del GLB son glTF (v = 0 arriba) y la textura del render target es GL (v = 0 abajo), así
+		// que la transformada aplicada debe ser exactamente v' = 1 - v.
+		expect(offset[1] + 0 * repeat[1]).toBe(1);
+		expect(offset[1] + 1 * repeat[1]).toBe(0);
+		// La U se muestrea sin tocar: la cara +Z del GLB no está espejada en horizontal.
+		expect(offset[0] + 0 * repeat[0]).toBe(0);
+		expect(offset[0] + 1 * repeat[0]).toBe(1);
 	});
 
 	it('exposes the lanyard band material config from BADGE_BAND (no magic numbers)', () => {
@@ -313,11 +359,27 @@ describe('Products3dBadgeScene', () => {
 		expect(internalsOf(fixture).band).toBe(BADGE_BAND);
 	});
 
-	it('drives the band texture repeat from BADGE_BAND.repeat ([-4, 1], no magic numbers)', () => {
+	it('drives the band texture repeat from BADGE_BAND.repeat (no magic numbers)', () => {
 		const fixture = createScene();
 
 		// El template bindea [repeat]="band.repeat"; la tupla vive en config, no en el componente.
-		expect(internalsOf(fixture).band.repeat).toEqual([-4, 1]);
+		expect(internalsOf(fixture).band.repeat).toBe(BADGE_BAND.repeat);
+	});
+
+	it('tiles the band texture preserving the aspect ratio of a 4:1 lanyard artwork', () => {
+		// Invariante geométrica entre constantes independientes (derivación completa en
+		// BADGE_BAND.repeat): con sizeAttenuation (default de meshline) el ancho de la correa en
+		// unidades de mundo es lineWidth * tan(fov/2), NO lineWidth; el largo son los 3 rope
+		// joints de la cadena. Una tesela debe medir `aspecto` veces el ancho para no estirarse.
+		const bandWidth = BADGE_BAND.lineWidth * Math.tan((BADGE_CAMERA.fov * Math.PI) / 360);
+		const bandLength = 3 * BADGE_PHYSICS.segmentLength;
+		const textureAspect = 1024 / 256; // band.jpg del playground
+		const tiles = bandLength / (textureAspect * bandWidth);
+
+		expect(Math.abs(BADGE_BAND.repeat[0])).toBeCloseTo(tiles, 2);
+		// Signo negativo = U invertida (orientación del arte); la V no se tesela a lo ancho.
+		expect(BADGE_BAND.repeat[0]).toBeLessThan(0);
+		expect(BADGE_BAND.repeat[1]).toBe(1);
 	});
 
 	it('loads the band texture from theme.bandTextureUrl (no hardcoded URL)', () => {

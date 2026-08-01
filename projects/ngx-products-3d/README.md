@@ -10,6 +10,15 @@ tier + nombre/número/tier del socio en Text3D) y todo el aspecto se controla po
 - SSR-safe: el canvas solo monta en browser (guard interno) y el consumo documentado es `@defer`.
 - La lib no empaqueta ningún asset: GLB, texturas y fuente los aporta la app consumidora por URL.
 
+> ### ⚠️ Vienes de 0.2.x: lee esto antes de actualizar
+>
+> **0.3.0 cambia el contrato del modelo GLB y no da ningún error de compilación al hacerlo.** Hasta
+> 0.2.1 el origen del GLB debía ser el punto de anclaje del clip; ahora es el **centro de la
+> tarjeta**. Un modelo hecho para 0.2.x carga igual pero renderiza **desplazado 1.45 unidades**.
+> Ver § [Contrato del modelo GLB](#contrato-del-modelo-glb) y el
+> [CHANGELOG](https://github.com/dotted-labs/ngx-products-3d/blob/main/CHANGELOG.md) para la
+> migración y para el resto de cambios incompatibles.
+
 ## Instalación
 
 ```bash
@@ -48,7 +57,7 @@ consumo es:
    a `@defer`, solo evita que un render en server reviente.
 
 Preload opcional del modelo:
-`<link rel="preload" as="fetch" href="/assets/3d/card.glb" crossorigin>`.
+`<link rel="preload" as="fetch" href="/assets/3d/membresia.glb" crossorigin>`.
 
 ## Quickstart
 
@@ -66,9 +75,9 @@ export const membershipRoutes: Routes = [
 		path: '',
 		providers: [
 			provideNgtRenderer(),
-			provideProducts3d({ cardModelUrl: '/assets/3d/card.glb' }),
+			provideProducts3d({ cardModelUrl: '/assets/3d/membresia.glb' }),
 			provideProducts3dBadgeTheme({
-				bandTextureUrl: '/assets/3d/band.png',
+				bandTextureUrl: '/assets/3d/band.jpg',
 				baseTextures: {
 					gold: '/assets/3d/base-gold.png',
 					silver: '/assets/3d/base-silver.png',
@@ -177,7 +186,7 @@ físico + escena del badge.
 
 | Campo | Tipo | Requerido | Default | Para qué sirve |
 | --- | --- | --- | --- | --- |
-| `bandTextureUrl` | `string` | sí | — | Textura de la correa (lanyard). La lib aplica `RepeatWrapping` y la tesela 4 veces a lo largo. Si la carga falla: color plano + warn en dev |
+| `bandTextureUrl` | `string` | sí | — | Textura de la correa (lanyard). La lib aplica `RepeatWrapping` y la tesela ~3.4 veces a lo largo (`BADGE_BAND.repeat`, calibrado para un arte tileable en X de proporción 4:1). Si la carga falla: color plano + warn en dev |
 | `baseTextures` | `Record<string, string>` | sí | — | Textura base del frente de la tarjeta por tier (key = `BadgeMemberData.tier`) |
 | `defaultBaseTextureUrl` | `string` | sí (**validado en runtime**) | — | Fallback obligatorio cuando el tier del socio no existe en `baseTextures` |
 | `fontUrl` | `string` | sí (**validado en runtime**) | — | Typeface JSON de three para los textos 3D del frente |
@@ -228,22 +237,37 @@ consumidora aporta los suyos:
 
 ## Contrato del modelo GLB
 
-Para regenerar `card.glb` (Blender, exportador glTF, etc.) sin tocar código, el modelo debe
+Para regenerar `membresia.glb` (Blender, exportador glTF, etc.) sin tocar código, el modelo debe
 cumplir exactamente:
 
 - **Nodos** (nombres exactos): `card` (mesh de la tarjeta), `clip` (gancho) y `clamp` (pinza).
+  `clip` y `clamp` pueden llevar transformación propia de nodo (la lib los monta como
+  `primitive` y la respeta); `card` va en identidad (ver **Origen**).
 - **Materiales** (nombres exactos): `base` asignado a `card`, `metal` asignado a `clip` y
   `clamp`. En render la lib **sustituye** `base` por su propio `MeshPhysicalMaterial` (clearcoat +
   textura dinámica del socio como `map`); `metal` se usa tal cual, o clonado y teñido si el tema
   define `colors.clip`.
-- **Origen**: el origen del conjunto es el **punto de anclaje del clip** (donde engancha la
-  correa). La lib posiciona el grupo visual en ese punto para que coincida con el joint físico.
-- **Escala/dimensiones**: unidades métricas, Y-up, transforms aplicados. La tarjeta mide
-  **1.6 × 2.25 × 0.02** unidades de mundo y su centro queda en **y = −1.45** respecto al origen
-  (el anclaje del clip). El collider físico de la tarjeta es fijo en la lib (half-extents
-  `[0.8, 1.125, 0.01]`): si cambias las proporciones del modelo, el visual y la física dejarán
-  de coincidir.
-- **Draco**: el asset de referencia va **sin comprimir** (~222 KB). El loader (soba
+- **Origen**: el origen del conjunto es el **centro de la tarjeta**, y el nodo `card` va con
+  transformación **identidad** (transforms aplicados en Blender). La lib monta el grupo visual
+  del modelo **sin offset** sobre el rigid body, porque el origen del body es el centro del
+  cuboid collider: origen del GLB = centro del collider = centro de la tarjeta.
+- **Escala/dimensiones**: unidades métricas, Y-up. La tarjeta mide **1.6 × 2.25 × 0.02**
+  unidades de mundo (bounding box del mesh de `card`: X`[-0.8, 0.8]`, Y`[-1.125, 1.125]`,
+  Z`[-0.01, 0.01]`). El collider físico es fijo en la lib (half-extents `[0.8, 1.125, 0.01]`):
+  si cambias las proporciones del modelo, el visual y la física dejarán de coincidir.
+- **Punto de agarre de la correa**: el borde **superior del `clip`**, en **y ≈ 1.286** (el mesh
+  del clip abarca Y`[0.917, 1.286]`). Ahí ancla la lib el spherical joint del que cuelga la
+  tarjeta (`BADGE_PHYSICS.cardJointAnchor`). Si tu clip es más alto o más bajo, la correa
+  enganchará donde diga *tu* modelo solo si ajustas esa constante: el valor por defecto asume
+  este contrato.
+- **UVs**: el mesh de `card` necesita `TEXCOORD_0`; sobre esas UVs se proyecta la textura
+  dinámica del socio (RenderTexture). Sin UVs el frente sale liso. La cara frontal (+Z) debe
+  cubrir `[0, 1]²`. **Ojo con la V**: el unwrap de Blender y la textura de un render target usan
+  convenciones de V opuestas, así que la lib **invierte la V** por defecto
+  (`BADGE_TEXTURE.mapRepeat` `[1, -1]` + `mapOffset` `[0, 1]`), calibrado contra un export
+  estándar de Blender. Si tu modelo sale con el frente **espejado en vertical**, pon esas dos
+  constantes a `[1, 1]` y `[0, 0]`.
+- **Draco**: el asset de referencia va **sin comprimir** (~51 KB). El loader (soba
   `gltfResource`) soporta Draco por defecto, pero el decoder se descarga en runtime desde el CDN
   de Google (`gstatic.com`); si publicas un GLB comprimido y quieres self-hosting del decoder,
   llama a `gltfResource.setDecoderPath('/draco/')` (de `angular-three-soba/loaders`) antes de
@@ -314,7 +338,7 @@ export class CustomBadgeCanvasComponent {
 	});
 
 	protected readonly theme: Products3dBadgeTheme = {
-		bandTextureUrl: '/assets/3d/band.png',
+		bandTextureUrl: '/assets/3d/band.jpg',
 		baseTextures: { gold: '/assets/3d/base-gold.png' },
 		defaultBaseTextureUrl: '/assets/3d/base-default.png',
 		fontUrl: '/assets/3d/font.json',

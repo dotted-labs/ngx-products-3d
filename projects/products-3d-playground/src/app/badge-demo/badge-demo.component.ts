@@ -12,7 +12,7 @@ type DemoThemeKey = 'violet' | 'ember';
 // debe mantenerse IDÉNTICO al del provider para que ambas fuentes no diverjan.
 const DEMO_THEMES: Record<DemoThemeKey, Products3dBadgeTheme> = {
 	violet: {
-		bandTextureUrl: '/assets/band.png',
+		bandTextureUrl: '/assets/band.jpg',
 		baseTextures: {
 			gold: '/assets/base-gold.png',
 			silver: '/assets/base-silver.png',
@@ -21,7 +21,9 @@ const DEMO_THEMES: Record<DemoThemeKey, Products3dBadgeTheme> = {
 		fontUrl: '/assets/font.json',
 	},
 	ember: {
-		bandTextureUrl: '/assets/band-ember.png',
+		// Misma correa que violet: band.jpg es neutra/tintable, la diferencia entre
+		// temas la marca colors.band (no hay una textura de correa por tema).
+		bandTextureUrl: '/assets/band.jpg',
 		baseTextures: {
 			gold: '/assets/base-ember-gold.png',
 			silver: '/assets/base-ember-silver.png',

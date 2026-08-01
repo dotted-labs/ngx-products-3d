@@ -1,74 +1,43 @@
 # Sesión actual
 
-- **Fecha**: 2026-07-17
-- **Spec**: spec-03 (badge — GLB, materiales, textura dinámica, theming, API final)
-- **Fase**: 6 (cierre/publicación)
-- **Rol**: leader (orquestación)
+- **Fecha**: —
+- **Spec**: — (`docs/specs/active/` vacía: no hay trabajo en curso)
+- **Fase**: —
+- **Rol**: —
 
 ## Estado
 
-- Feature 11 `publish-package` → `done` (0.2.1 publicada en npm por CI). spec-03 completada.
-- Baseline verificado al arrancar: `pnpm build` OK, lint OK, tests 76/76 verdes.
-- Alcance de esta sesión: TODO lo previo a publicar (package.json de la lib:
-  sideEffects + peers; build limpio; `npm publish --dry-run`; smoke test
-  documentado). La publicación real en npm NO se ejecuta sin GO explícito
-  del usuario.
+Sin spec activa. La última sesión cerró **spec-03-F3** (assets GLB reales + materiales) y la
+archivó en `docs/specs/spec-03-F3-badge-assets-materials.md`. Resumen completo en
+`progress/history.md`.
 
-## Plan
+Un agente que llegue aquí y no encuentre spec en `docs/specs/active/` **para y pregunta**: no saca
+trabajo del archivo ni lo inventa.
 
-1. Implementer: verificar/ajustar package.json de la lib (sideEffects: false,
-   rangos peer reales), build, dry-run del publish, y documentar smoke test
-   en docs/. Resultado en `progress/impl_feature11.md`.
-2. Reviewer: validar contra acceptance de la feature 11 (sin el punto de
-   publicación real). Resultado en `progress/review_feature11.md`.
-3. Leader: reportar al usuario y pedir GO para `npm publish` real.
+## Backlog conocido para la próxima spec
 
-## Implementer — feature 11 publish-package
+- **Encuadre del frente de la tarjeta** (preexistente desde 0.2.1, excluido del alcance de
+  spec-03-F3 por su «No hacer»): el portal de la RenderTexture hereda el `size` del canvas mientras
+  el FBO es cuadrado → el frente se deforma con el aspecto de la **ventana** (×1.41 a ×2.95) y con
+  ventana ancha el plano base 5×5 deja franjas oscuras a los lados. Recomendación del reviewer:
+  derivar el aspecto del bbox del GLB en vez de clavar 1.6/2.25, ~2 % de overscan en `planeSize` y
+  evaluar un FBO no cuadrado. Detalle en `progress/impl_feature14.md` (P2).
+- **`BADGE_BAND.repeat` derivado del fov**: hoy es `-3.383` precalculado a mano desde
+  `BADGE_CAMERA.fov`; si alguien cambia el fov queda obsoleto en silencio. Hacerlo **función pura
+  evaluada al cargar el módulo (NO `computed()`**: no hay estado reactivo y rompería la config
+  data-driven), con el aspecto de la textura como **parámetro** (el 4:1 es del asset del
+  consumidor, no de la lib). No urge: el test de invariante rompe si cambia el fov.
+- **Pequeños ajustes visuales** detectados por el usuario durante la N3 del 2026-08-01, pendientes
+  de concretar.
+- Propuestas P3/P4/P5 del implementer en `progress/impl_feature14.md`, sin aplicar.
 
-- En curso: spec-03-F6 — publish-package (preparación, SIN publicación real)
-- Plan:
-  - Cruzar peers del package.json de la lib contra imports reales de src/ y versiones instaladas; ajustar rangos.
-  - `pnpm build` limpio a dist/ngx-products-3d.
-  - `npm publish --dry-run` (o `npm pack --dry-run`) sobre dist y auditar contenido del tarball.
-  - Escribir `docs/smoke-test-external.md` (procedimiento con tarball de `npm pack`).
-  - Verificación final build + lint + test; informe en `progress/impl_feature11.md`.
-- Criterios de aceptación aplicables (copiados de feature_list.json, excluida la publicación real):
-  - package.json de la lib con sideEffects: false y rangos peer correctos (verificado)
-  - npm publish --dry-run limpio (tarball con fesm2022, tipos y package.json correctos)
-  - Smoke test documentado: app externa mínima consumiendo el paquete renderiza el badge
-  - pnpm build / lint / test todo verde
+## Estado de publicación
+
+`0.3.0` **preparada pero NO publicada**: bump en `projects/ngx-products-3d/package.json`,
+`CHANGELOG.md` creado en la raíz y aviso de migración en el README publicado. La publicación la
+dispara **CI** (`.github/workflows/release-publish.yml`) al detectar el bump **en un push a
+`main`**; hoy el bump vive en la rama `feature/blender-assets` y nada se ha publicado todavía.
 
 ## Log
 
-- 14:50 — baseline verde; feature 11 a in_progress; lanzando implementer.
-- Implementer: package.json de la lib ajustado (version 0.2.0 — la 0.1.1 ya
-  está publicada en npm; rangos three/rapier3d-compat/meshline acotados a los
-  peers reales de angular-three@4.2.3; repository.url normalizada). README
-  (tabla peers) sincronizado. `npm publish --dry-run` limpio (5 archivos,
-  52.4 kB). Smoke test externo EJECUTADO hasta build verde de app externa con
-  el tarball (`docs/smoke-test-external.md`); checklist visual en navegador
-  pendiente manual. Verificación final: build + lint + test 76/76 verdes.
-  Informe: `progress/impl_feature11.md`. Pendiente review.
-- 2026-07-20 — sesión de continuación (leader). Baseline reverificado verde
-  (build + lint + test 76/76). Reviewer ejecutado: **APROBADO** (dry-run limpio,
-  rangos peer coherentes con node_modules, sideEffects: false, README/package
-  coherentes, smoke test doc+ejecutado). Informe: `progress/review_feature11.md`.
-- 2026-07-20 — GO de publicación solicitado al usuario → respuesta **"Todavía
-  no"**. Feature 11 queda `in_progress`, todo lo previo APROBADO y listo. Falta
-  únicamente: (a) checklist visual en navegador §6b [manual], (b) GO explícito
-  para `cd dist/ngx-products-3d && npm publish`. NO publicar sin ese GO.
-- 2026-07-21 — GO del usuario. La publicación acabó haciéndose por **CI**, no en
-  local: al mergear la PR #5 (`feat/angular-components`) a `main`, el workflow
-  `.github/workflows/release-publish.yml` detectó el bump y publicó
-  **0.2.0** con el `NPM_TOKEN` del repo (el intento de `npm publish` local falló
-  antes por token caducado + permisos: el paquete lo posee `luismdev`, no `gunsr`).
-- 2026-07-21 — detectado bug en el workflow: `cp README.md` copiaba el README
-  corto de la raíz (4.1 kB) sobre el README público completo (14 kB) que
-  ng-packagr ya deja en dist → **0.2.0 se publicó con el README equivocado**.
-  Fix del workflow (quitar ese `cp`, dejar solo `cp LICENSE`) + bump a **0.2.1**
-  vía PR #6 → merge a `main` → CI publicó **0.2.1** con el README correcto
-  (13.7 kB) + LICENSE. Registry: `[0.1.0, 0.1.1, 0.2.0, 0.2.1]`, `latest: 0.2.1`.
-- 2026-07-21 — **Feature 11 `done`** por instrucción explícita del usuario de
-  cerrar la tarea (review APROBADA + publicación 0.2.1 verificada en registry).
-  Residual no bloqueante: checklist visual en navegador §6b [manual], cubierto por
-  equivalencia con el render N3 de F9/F10. **spec-03 completada.**
+(sesión nueva: vacío)

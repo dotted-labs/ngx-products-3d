@@ -42,6 +42,7 @@ import { lerpTowards, spinCorrectedAngvelY } from './badge-stabilize';
 import { Products3dBadgeTexture } from './badge-texture.component';
 import {
 	BADGE_BAND,
+	BADGE_CARD_MODEL,
 	BADGE_DRAG,
 	BADGE_LAYOUT,
 	BADGE_MAP_ANISOTROPY,
@@ -55,13 +56,14 @@ import {
 extend({ MeshLineGeometry, MeshLineMaterial });
 
 /**
- * Contrato del card.glb: nodos `card`/`clip`/`clamp` y materiales `base`/`metal`.
+ * Contrato del GLB de la tarjeta: nodos `card`/`clip`/`clamp` y materiales `base`/`metal`
+ * (contrato completo, incluido el origen del modelo, en el README de la lib).
  *
  * Tipo INTERNO (no API pública). No extiende `GLTF` de three-stdlib a propósito: ese tipo
  * NO es nombrable en los `.d.ts` emitidos por la lib (three-stdlib es dep transitiva de soba,
  * sin hoisting al node_modules raíz → `import from 'three-stdlib'` no resuelve y usar el tipo
  * resuelto de `gltfResource` dispara TS2742). Modelamos solo lo que consume el componente y
- * casteamos el `ResourceRef` al asignarlo; el card.glb real cumple este contrato (ver spike S3).
+ * casteamos el `ResourceRef` al asignarlo.
  */
 interface BadgeGLTF {
 	nodes: { card: Mesh; clip: Mesh; clamp: Mesh };
@@ -70,8 +72,8 @@ interface BadgeGLTF {
 
 /**
  * Escena física del badge: cadena fixed→j1→j2→j3 (rope joints) de la que
- * cuelga la tarjeta (spherical joint). La geometría de la tarjeta se carga del
- * card.glb (nodos card/clip/clamp) vía `gltfResource`, condicionada a recurso resuelto.
+ * cuelga la tarjeta (spherical joint). La geometría de la tarjeta se carga del GLB de
+ * `config.cardModelUrl` (nodos card/clip/clamp) vía `gltfResource`, condicionada a recurso resuelto.
  *
  * Exportado también para consumidores con canvas propio (composición
  * con otros elementos 3D futuros, spec-03 Fase 5).
@@ -114,21 +116,22 @@ interface BadgeGLTF {
 		>
 			<ngt-object3D [cuboidCollider]="cardColliderArgs" />
 			<!--
-				Visual de la tarjeta = geometría del card.glb. Se monta SOLO cuando el recurso
+				Visual de la tarjeta = geometría del GLB. Se monta SOLO cuando el recurso
 				resuelve (@if sobre gltfData(), gateado con hasValue() → NO lanza si el GLB entra en
 				error; una URL de modelo rota degrada a "sin tarjeta", no blanquea la escena. Si el
 				GLB falla se emite un warn dev, ver gltfErrorEffect) → sin flash de escena a medio
-				cargar. El origen del
-				GLB es el anclaje del clip; el grupo se sitúa en cardAnchor (= cardJointAnchor)
-				para que el centro de la tarjeta coincida con el cuboid collider y el clip con el
-				punto del spherical joint. La tarjeta se renderiza como mesh propio con
-				meshPhysicalMaterial (clearcoat) en vez del material 'base' del GLB; se preserva la
-				transformación local del nodo card (offset y=-1.45 del GLB) porque su geometría va
-				centrada en el origen. clip/clamp siguen como primitive con su material 'metal'; el
+				cargar. El origen del GLB es el CENTRO de la tarjeta (contrato del modelo en el README
+				de la lib), que coincide con el origen del rigid body y el centro del cuboid collider
+				→ el grupo visual va sin offset (cardModelPosition, BADGE_CARD_MODEL). El punto de
+				agarre de la correa NO es este: es el top del clip y solo lo consume el spherical
+				joint (BADGE_PHYSICS.cardJointAnchor), constante aparte. La tarjeta se renderiza como
+				mesh propio con meshPhysicalMaterial (clearcoat) en vez del material 'base' del GLB, y
+				preserva position/quaternion/scale del nodo card (identidad en el modelo actual).
+				clip/clamp siguen como primitive con su material 'metal' y su transform de nodo; el
 				tinte opcional del metal se aplica por código en un effect (ver metalEffect).
 			-->
 			@if (gltfData(); as data) {
-				<ngt-group [position]="cardAnchor">
+				<ngt-group [position]="cardModelPosition">
 					<ngt-mesh
 						[geometry]="data.nodes.card.geometry"
 						[position]="data.nodes.card.position"
@@ -176,7 +179,9 @@ interface BadgeGLTF {
 			undefined (loading o error), useMap=0 y meshline pinta el color plano (sin flash ni crash
 			con map roto); al resolver, useMap=1 y el shader muestrea el map. Si la textura falla se
 			emite un warn dev, ver bandTextureErrorEffect. repeat es un Vector2 en meshline; el renderer
-			v4 acepta la tupla y hace repeat.set(-4, 1). RepeatWrapping se aplica en el effect del constructor.
+			v4 acepta la tupla de BADGE_BAND.repeat y hace repeat.set(...) con ella. El módulo de la X
+			no es un número redondo: sale de la derivación de aspecto documentada en esa constante.
+			RepeatWrapping se aplica en el effect del constructor.
 		-->
 		<ngt-mesh>
 			<ngt-mesh-line-geometry #bandGeometry />
@@ -227,27 +232,33 @@ export class Products3dBadgeScene {
 	protected readonly layout = BADGE_LAYOUT;
 	protected readonly band = BADGE_BAND;
 	/**
-	 * Posición del grupo visual del GLB dentro del card body. El GLB tiene su origen en el
-	 * anclaje del clip; situarlo en `cardJointAnchor` alinea el centro de la tarjeta con el
-	 * cuboid collider (origen del body) y el clip con el punto del spherical joint.
+	 * Posición del grupo visual del GLB dentro del card body (anclaje VISUAL). Es una constante
+	 * DISTINTA del anclaje físico `BADGE_PHYSICS.cardJointAnchor` (body2Anchor del spherical
+	 * joint, top del clip): el origen del GLB es el centro de la tarjeta = origen del body =
+	 * centro del cuboid collider, así que el grupo va sin offset. Derivación en
+	 * `BADGE_CARD_MODEL`.
 	 */
-	protected readonly cardAnchor = BADGE_PHYSICS.cardJointAnchor;
+	protected readonly cardModelPosition = BADGE_CARD_MODEL.groupPosition;
 	/**
 	 * Options del NgtsRenderTexture del frente de la tarjeta, todas desde config: tamaño del
 	 * FBO (BADGE_TEXTURE.size), frames continuo (porqué frente a frames:1 en
-	 * BADGE_TEXTURE.frames) y anisotropy (propiedad de la TEXTURA — soba la aplica sobre
-	 * fbo.texture —, no del material; ver BADGE_MAP_ANISOTROPY).
+	 * BADGE_TEXTURE.frames), anisotropy (propiedad de la TEXTURA — soba la aplica sobre
+	 * fbo.texture —, no del material; ver BADGE_MAP_ANISOTROPY) y la transformada UV
+	 * repeat/offset que invierte la V (convención glTF del GLB vs orientación GL de un render
+	 * target; derivación en BADGE_TEXTURE.mapRepeat).
 	 */
 	protected readonly renderTextureOptions: Partial<NgtsRenderTextureOptions> = {
 		width: BADGE_TEXTURE.size,
 		height: BADGE_TEXTURE.size,
 		frames: BADGE_TEXTURE.frames,
 		anisotropy: BADGE_MAP_ANISOTROPY,
+		repeat: BADGE_TEXTURE.mapRepeat,
+		offset: BADGE_TEXTURE.mapOffset,
 	};
 
 	private readonly config = inject(PRODUCTS_3D_CONFIG);
 	/**
-	 * Geometría de la tarjeta cargada del card.glb (nodos card/clip/clamp, materiales
+	 * Geometría de la tarjeta cargada del GLB (nodos card/clip/clamp, materiales
 	 * base/metal). `ResourceRef` de soba → consumir vía `.value()` (render condicionado).
 	 * URL desde `PRODUCTS_3D_CONFIG`, nunca hardcodeada. Cast a `BadgeGLTF` para no arrastrar
 	 * el tipo GLTF de three-stdlib (no nombrable en los `.d.ts` de la lib; ver `BadgeGLTF`).

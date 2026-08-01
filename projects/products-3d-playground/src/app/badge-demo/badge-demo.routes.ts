@@ -10,12 +10,12 @@ export const badgeDemoRoutes: Routes = [
 			// EnvironmentProviders → nivel ruta (no cabe en providers de componente).
 			// Ruta lazy para que angular-three/three no entren en el bundle inicial.
 			provideNgtRenderer(),
-			provideProducts3d({ cardModelUrl: '/assets/card.glb' }),
+			provideProducts3d({ cardModelUrl: '/assets/membresia.glb' }),
 			// GOTCHA: el componente demo pasa [theme] y ese input PISA por completo a este
 			// provider (resolvedTheme no hace merge). Este tema debe mantenerse IDÉNTICO al
 			// tema 'violet' de DEMO_THEMES en badge-demo.component.ts para no divergir.
 			provideProducts3dBadgeTheme({
-				bandTextureUrl: '/assets/band.png',
+				bandTextureUrl: '/assets/band.jpg',
 				baseTextures: {
 					gold: '/assets/base-gold.png',
 					silver: '/assets/base-silver.png',

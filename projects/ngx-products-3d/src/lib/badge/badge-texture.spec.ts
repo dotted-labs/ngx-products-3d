@@ -2,7 +2,7 @@ import type { BadgeMemberData, Products3dBadgeTheme } from '../types';
 import { badgeTextFor, fitTextScale, resolveBaseTextureUrl } from './badge-texture';
 
 const THEME: Products3dBadgeTheme = {
-	bandTextureUrl: 'assets/band.png',
+	bandTextureUrl: 'assets/band.jpg',
 	baseTextures: {
 		gold: 'assets/base-gold.png',
 		silver: 'assets/base-silver.png',

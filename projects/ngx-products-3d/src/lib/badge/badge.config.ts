@@ -10,8 +10,21 @@ export const BADGE_PHYSICS = {
 	segmentLength: 1,
 	/** Anchor local (centro del body) de los rope joints entre segmentos */
 	segmentJointAnchor: [0, 0, 0] as [number, number, number],
-	/** Anchor del spherical joint tarjeta↔último segmento */
-	cardJointAnchor: [0, 1.45, 0] as [number, number, number],
+	/**
+	 * Anchor del spherical joint tarjeta↔último segmento, expresado en el sistema LOCAL del
+	 * rigid body de la tarjeta (origen del body = centro de la tarjeta, ver
+	 * `BADGE_CARD_MODEL.groupPosition`).
+	 *
+	 * Y = 1.286 es el borde SUPERIOR del `clipMesh` del GLB (accessor POSITION del modelo:
+	 * X[-0.06, 0.06] · Y[0.917, **1.286**] · Z[-0.09, 0.09]), es decir el punto por el que el
+	 * aro agarra la correa. Queda por encima del borde superior de la tarjeta
+	 * (`cardColliderHalfExtents[1]` = 1.125), que es justo lo que hace que el clip sobresalga
+	 * de la ranura. NO confundir con el anclaje visual: este valor solo lo consume el joint.
+	 *
+	 * (Histórico: con el `card.glb` demo valía 1.45 porque aquel modelo tenía el origen en el
+	 * anclaje del clip y el nodo `card` compensaba con una translation `y = −1.45`.)
+	 */
+	cardJointAnchor: [0, 1.286, 0] as [number, number, number],
 	/** Radio del ball collider de cada segmento de la correa */
 	segmentColliderRadius: 0.1,
 	/** Half-extents del cuboid collider de la tarjeta */
@@ -55,23 +68,56 @@ export const BADGE_LAYOUT = {
 export const BADGE_BAND = {
 	/** Color base de la correa; fallback cuando `theme.colors.band` no está definido */
 	color: 'white',
-	/** Ancho de línea de la correa en unidades de mundo (meshline lineWidth) */
+	/**
+	 * `lineWidth` de la meshline. OJO: NO son unidades de mundo. Con `sizeAttenuation` (default 1
+	 * de meshline) el shader suma el offset en espacio de clip, así que el ancho real de la correa
+	 * es `lineWidth * tan(fov/2)` = **0.2217 uds** con `BADGE_CAMERA.fov` = 25 (constante con la
+	 * distancia). De ahí sale el teselado de `repeat`; recalcularlo si se toca este valor.
+	 */
 	lineWidth: 1,
 	/** La correa se dibuja siempre encima; sin test de profundidad para evitar clipping con la tarjeta */
 	depthTest: false,
 	/**
-	 * Repetición de la textura de la correa (meshline `repeat`, un `Vector2`). La X negativa
-	 * (-4) tesela la textura 4 veces a lo largo de la correa invirtiendo la U (orientación del
-	 * arte del lanyard); la Y (1) no repite en el ancho. spec-03 feature 4.
+	 * Repetición de la textura de la correa (meshline `repeat`, un `Vector2`; el shader muestrea
+	 * `texture2D(map, vUV * repeat)`, con `vUV.x` a lo largo de la correa y `vUV.y` a lo ancho).
+	 * La Y (1) hace que el alto de la textura cubra exactamente el ancho de la correa.
+	 *
+	 * El MÓDULO de la X (3.383) es el número de teselas que mantiene el aspecto del arte sin
+	 * estirarlo, derivado (spec-03-F3, feature 14):
+	 * - Longitud de la correa = 3 rope joints × `BADGE_PHYSICS.segmentLength` (1) = **3 uds**
+	 *   (el rope joint es una distancia MÁXIMA: en reposo la cadena cuelga tensa).
+	 * - Ancho de la correa = **0.2217 uds**, NO `lineWidth`: con `sizeAttenuation` (default 1 de
+	 *   meshline) el shader suma el offset en espacio de CLIP (`normal.xy *= .5 * lineWidth`),
+	 *   de donde el ancho en mundo es `lineWidth * tan(fov/2)` = 1 × tan(12.5°) con
+	 *   `BADGE_CAMERA.fov` = 25 (constante con la distancia).
+	 * - Textura de referencia 4:1 (`band.jpg`, 1024×256) → una tesela debe medir 4 × 0.2217 =
+	 *   0.887 uds de largo ⇒ repeticiones = 3 / 0.887 = **3.383**.
+	 *
+	 * El SIGNO negativo invierte la U (orientación del arte del lanyard, spec-03 feature 4).
+	 * Recalcular si cambian `BADGE_CAMERA.fov`, `lineWidth`, `segmentLength` o el aspecto de la
+	 * textura del tema.
 	 */
-	repeat: [-4, 1] as [number, number],
+	repeat: [-3.383, 1] as [number, number],
 } as const;
 
-/** Placeholder plano de la tarjeta (spec-02 Fase 1; se sustituye por el GLB en spec-03) */
-export const BADGE_CARD_PLACEHOLDER = {
-	planeSize: [1.6, 2.25] as [number, number],
-	color: 'white',
-	opacity: 0.9,
+/**
+ * Colocación del modelo GLB dentro del rigid body de la tarjeta (spec-03-F3). Es el anclaje
+ * VISUAL, deliberadamente separado de `BADGE_PHYSICS.cardJointAnchor` (anclaje FÍSICO del
+ * spherical joint): comparten sistema de coordenadas pero no significado, y confundirlos es
+ * lo que rompió el enganche al cambiar de modelo.
+ */
+export const BADGE_CARD_MODEL = {
+	/**
+	 * Posición del grupo que contiene los nodos `card`/`clip`/`clamp` del GLB, relativa al
+	 * origen del rigid body de la tarjeta.
+	 *
+	 * Vale el origen (sin offset) porque el contrato del GLB fija su origen en el CENTRO de la
+	 * tarjeta: el accessor POSITION de `cardMesh` es X[-0.8, 0.8] · Y[-1.125, 1.125] ·
+	 * Z[-0.01, 0.01], exactamente `BADGE_PHYSICS.cardColliderHalfExtents` ([0.8, 1.125, 0.01]),
+	 * que es un cuboid CENTRADO en el origen del body. Origen del GLB = centro del collider →
+	 * offset cero, y el visual cae siempre donde colisiona y se arrastra la tarjeta.
+	 */
+	groupPosition: [0, 0, 0] as [number, number, number],
 } as const;
 
 export const BADGE_TEXTURE = {
@@ -90,6 +136,26 @@ export const BADGE_TEXTURE = {
 	 * `frames`, default Infinity).
 	 */
 	frames: Infinity,
+	/**
+	 * Transformada UV con la que se muestrea el `map` de la tarjeta. Va en las options del
+	 * NgtsRenderTexture (soba pasa las claves no reservadas como parameters sobre `fbo.texture`,
+	 * igual que `BADGE_MAP_ANISOTROPY`), no como binding del material.
+	 *
+	 * Invierte la V — `v' = mapOffset.y + v · mapRepeat.y = 1 − v` — porque las dos convenciones
+	 * que se encuentran aquí son opuestas (spec-03-F3, feature 14):
+	 * - glTF fija el origen UV en la esquina SUPERIOR izquierda, y los UV del `card` del GLB lo
+	 *   cumplen: en la cara +Z de `membresia.glb`, `u = (x + 0.8) / 1.6` y
+	 *   `v = (1.125 − y) / 2.25` (ajuste exacto, r² = 1 sobre el accessor TEXCOORD_0) → v = 0 es
+	 *   el borde SUPERIOR de la tarjeta.
+	 * - La textura de un render target NO pasa por `texImage2D`, así que su `flipY` no se aplica:
+	 *   su contenido queda en orientación GL, con v = 0 en el borde INFERIOR de lo renderizado.
+	 *
+	 * Sin esta corrección el frente del socio se pinta espejado en vertical. La U no se toca (la
+	 * cara +Z no está espejada en horizontal).
+	 */
+	mapRepeat: [1, -1] as [number, number],
+	/** Desplazamiento UV del `map` de la tarjeta; con `mapRepeat` compone la inversión de la V */
+	mapOffset: [0, 1] as [number, number],
 	/** Posición de la cámara propia (makeDefault) de la escena de textura */
 	cameraPosition: [0, 0, 5] as [number, number, number],
 	/** Tamaño (ancho, alto) del plano de fondo; cubre el encuadre de la cámara a z=0 */
