@@ -154,8 +154,9 @@ export const BADGE_BASE_COLOR = '#000000';
  * una decisión de config.
  *
  * Con la cámara ORTOGRÁFICA el depth es lineal (no hay pérdida de precisión con la distancia), así
- * que un delta mínimo basta para ordenar las capas sin z-fighting. Se mantiene MUY por debajo de la
- * z de los textos (`BADGE_TEXT_LAYOUT`) para que el arte nunca los tape.
+ * que un delta mínimo basta para ordenar las capas sin z-fighting. Las tres capas del frente están
+ * separadas por múltiplos de este gap (fondo 0 → arte 1× → textos 2×, `BADGE_TEXTURE.textLayerZ`),
+ * así que el orden de apilado es una sola decisión de config.
  */
 const BADGE_RT_LAYER_GAP = 0.001;
 
@@ -250,6 +251,17 @@ export const BADGE_TEXTURE = {
 	 */
 	artPosition: [0, 0, BADGE_RT_LAYER_GAP] as [number, number, number],
 	/**
+	 * z de los textos del socio (`BADGE_TEXT_LAYOUT`): DELANTE del arte del tier, que a su vez va
+	 * delante del quad de `baseColor` (fondo 0 → arte 1× gap → textos 2× gap). La X y la Y de cada
+	 * texto NO viven aquí: salen del `anchor` de su slot (`uvAnchorToRtPosition`), y solo la
+	 * profundidad de la capa es común a los tres.
+	 *
+	 * Los textos se extruyen hacia +z (`BadgeTextSlot.height`), así que quedan por delante del arte
+	 * también en volumen; se mantiene MUY por debajo de `cameraPosition.z` para no salirse del
+	 * frustum de profundidad.
+	 */
+	textLayerZ: BADGE_RT_LAYER_GAP * 2,
+	/**
 	 * Ratio (ancho / alto) que debe cumplir el arte del tier para no salir estirado: el de la cara
 	 * frontal (`BADGE_FRONT_FACE`, 32:45 ≈ 0.711). DERIVADO, nunca literal — es el mismo rect que
 	 * encuadra `cameraFrustum` y que cubren los quads de `frontPlaneSize`, así que el arte se estira
@@ -274,48 +286,76 @@ export const BADGE_TEXTURE = {
 export type BadgeTextField = 'name' | 'memberNumber' | 'tier';
 
 /**
- * Un slot de texto del frente de la tarjeta (escena de textura, spec-03 feature 6).
+ * Alineado horizontal de un slot de texto respecto a su `anchor`. `NgtsText3D` no tiene alineado
+ * (es un `TextGeometry` crudo, cuyo origen queda en el borde IZQUIERDO de la línea base), así que
+ * lo resuelve la lib desplazando el mesh en X con `alignOffsetX`.
+ */
+export type BadgeTextAlign = 'left' | 'right' | 'center';
+
+/**
+ * Un slot de texto del frente de la tarjeta (escena de textura, spec-03-F4v2 R3).
  * Tuplas mutables a propósito: los inputs de soba (`NgtsText3D.options`) no admiten
  * `readonly` (mismo criterio que `BadgeLightformerOptions`). Exportado para que los
  * `.d.ts` de la lib puedan nombrar el tipo de `BADGE_TEXT_LAYOUT` (evita TS4029).
  */
 export interface BadgeTextSlot {
 	field: BadgeTextField;
-	position: [number, number, number];
-	rotation: [number, number, number];
+	/**
+	 * Anclaje normalizado (0-1) sobre la cara frontal, en el sistema de la ESCENA RT: origen
+	 * ABAJO-IZQUIERDA, `[1, 1]` = arriba-derecha (p. ej. abajo-derecha ≈ `[0.92, 0.10]`).
+	 *
+	 * **NO son los UV del GLB**: allí `v = 0` es el borde SUPERIOR de la tarjeta
+	 * (`v = (1.125 − y) / 2.25`, convención glTF). Aquí la V va hacia ARRIBA porque el anclaje se
+	 * expresa sobre lo que la cámara ortográfica encuadra —la escena RT, con +Y arriba—, y es la
+	 * inversión de V del `map` (`BADGE_TEXTURE.mapRepeat`/`mapOffset`) la que concilia ambas
+	 * convenciones al pegar la RenderTexture en la cara. Confundirlas pone los textos del socio
+	 * boca abajo respecto al arte.
+	 *
+	 * La conversión a unidades de mundo de la escena RT es `uvAnchorToRtPosition` (fn pura), que
+	 * deriva el rect de `BADGE_FRONT_FACE`. Y es el punto de la LÍNEA BASE del texto (el borde que
+	 * indique `align`), no el centro de su bounding box.
+	 */
+	anchor: [number, number];
+	/** Borde del texto que se pega al `anchor`: `right` = el texto crece hacia la izquierda */
+	align: BadgeTextAlign;
 	/** Tamaño de la fuente (TextGeometry `size`, unidades de mundo de la escena de textura) */
 	size: number;
 	/** Profundidad de extrusión del texto (TextGeometry `height`) */
 	height: number;
+	/**
+	 * Ancho máximo del texto, en las mismas unidades que `size`, antes de reducirlo con escala
+	 * UNIFORME (`fitTextScale`). Por slot y no global: cada línea del frente tiene su propio hueco.
+	 * Nunca agranda un texto corto (clamp a <= 1) y nunca comprime en un solo eje.
+	 */
+	maxWidth: number;
 }
 
 /**
- * Layout data-driven de los textos del socio sobre el frente de la tarjeta: la escena de
- * textura solo itera este array (reordenar/ajustar slots NO toca el componente). La z
- * positiva (0.01) separa los textos del plano de fondo (evita z-fighting). Valores de
- * arranque plausibles; el ajuste fino visual llega con la RenderTexture (feature 7, N3).
+ * Layout data-driven de los textos del socio sobre el frente de la tarjeta: la escena de textura
+ * solo itera este array (reordenar/ajustar slots NO toca el componente). `name` y `memberNumber`
+ * van ABAJO-DERECHA alineados a la derecha, con el `tier` justo encima (spec-03-F4v2 R3); las
+ * anclas comparten la U (0.92) para que las tres líneas queden a bandera por la derecha.
+ *
+ * La z NO va en el slot: es común a los tres y vive en `BADGE_TEXTURE.textLayerZ` (capa por delante
+ * del arte del tier). Valores de arranque de la spec; el ajuste fino es visual (T7, N3).
  */
 export const BADGE_TEXT_LAYOUT: BadgeTextSlot[] = [
-	{ field: 'name', position: [-1.8, 0.6, 0.01], rotation: [0, 0, 0], size: 0.45, height: 0.05 },
+	{ field: 'name', anchor: [0.92, 0.16], align: 'right', size: 0.09, height: 0.01, maxWidth: 0.65 },
 	{
 		field: 'memberNumber',
-		position: [-1.8, -0.2, 0.01],
-		rotation: [0, 0, 0],
-		size: 0.3,
-		height: 0.05,
+		anchor: [0.92, 0.08],
+		align: 'right',
+		size: 0.06,
+		height: 0.01,
+		maxWidth: 0.4,
 	},
-	{ field: 'tier', position: [-1.8, -0.9, 0.01], rotation: [0, 0, 0], size: 0.25, height: 0.05 },
+	{ field: 'tier', anchor: [0.92, 0.24], align: 'right', size: 0.05, height: 0.01, maxWidth: 0.4 },
 ];
 
-/** Textos del frente de la tarjeta: formato y encaje (spec-03 feature 6) */
+/** Textos del frente de la tarjeta: formato y color (el encaje va por slot en `BADGE_TEXT_LAYOUT`) */
 export const BADGE_TEXT = {
 	/** Prefijo del número de socio (`#1234`) */
 	memberNumberPrefix: '#',
-	/**
-	 * Ancho máximo (unidades de mundo de la escena de textura) de cada texto antes de
-	 * escalarlo hacia abajo (nombres largos). Nunca agranda (clamp a <=1, ver `fitTextScale`).
-	 */
-	maxWidth: 3.6,
 	/** Color fallback del texto cuando `theme.colors.text` no está definido */
 	color: 'black',
 } as const;

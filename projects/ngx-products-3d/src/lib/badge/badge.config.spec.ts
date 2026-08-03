@@ -1,4 +1,11 @@
-import { BADGE_FRONT_FACE, BADGE_PHYSICS, BADGE_TEXTURE } from './badge.config';
+import {
+	BADGE_FRONT_FACE,
+	BADGE_PHYSICS,
+	BADGE_TEXT_LAYOUT,
+	BADGE_TEXTURE,
+	type BadgeTextField,
+	type BadgeTextSlot,
+} from './badge.config';
 
 /**
  * Ratio de la cara frontal de la tarjeta, FIJADO A MANO desde el contrato del GLB
@@ -100,6 +107,94 @@ describe('BADGE_TEXTURE front layers', () => {
 		expect(artZ).toBeGreaterThan(backdropZ);
 		// ...y delante de la cámara, no detrás (ni fuera del frustum de profundidad).
 		expect(BADGE_TEXTURE.cameraPosition[2]).toBeGreaterThan(artZ);
+	});
+});
+
+describe('BADGE_TEXT_LAYOUT', () => {
+	/** Slot del layout publicado, por campo (el orden del array es el de render, no el de lectura). */
+	function slotFor(field: BadgeTextField): BadgeTextSlot {
+		const slot = BADGE_TEXT_LAYOUT.find((candidate) => candidate.field === field);
+		if (!slot) {
+			throw new Error(`No hay slot para el campo '${field}' en BADGE_TEXT_LAYOUT`);
+		}
+		return slot;
+	}
+
+	it('covers the three member fields exactly once', () => {
+		expect(BADGE_TEXT_LAYOUT.map((slot) => slot.field).sort()).toEqual([
+			'memberNumber',
+			'name',
+			'tier',
+		]);
+	});
+
+	it('replaces the absolute position/rotation of each slot with anchor + align', () => {
+		// La forma vieja (position/rotation en unidades de mundo) quedó atada al encuadre anterior:
+		// con el frustum de 1.6 × 2.25 esos valores mandaban los textos fuera de cuadro. Si alguien
+		// los reintroduce, la colocación pasa a tener dos fuentes y este test cae.
+		for (const slot of BADGE_TEXT_LAYOUT) {
+			expect(slot).not.toHaveProperty('position');
+			expect(slot).not.toHaveProperty('rotation');
+			expect(slot.anchor).toHaveLength(2);
+			expect(slot.align).toBe('right');
+			expect(slot.size).toBeGreaterThan(0);
+			expect(slot.height).toBeGreaterThan(0);
+			expect(slot.maxWidth).toBeGreaterThan(0);
+		}
+	});
+
+	it('anchors every slot inside the front face (normalized 0-1)', () => {
+		for (const slot of BADGE_TEXT_LAYOUT) {
+			const [u, v] = slot.anchor;
+
+			expect(u).toBeGreaterThanOrEqual(0);
+			expect(u).toBeLessThanOrEqual(1);
+			expect(v).toBeGreaterThanOrEqual(0);
+			expect(v).toBeLessThanOrEqual(1);
+		}
+	});
+
+	it('places name and memberNumber at the BOTTOM-RIGHT of the face', () => {
+		// El anchor tiene el origen abajo-izquierda: u > 0.5 es la mitad derecha y v < 0.5 la mitad
+		// inferior (spec-03-F4v2 R3). Es la mitad INFERIOR de la tarjeta porque la escena RT tiene
+		// +Y arriba, no la V del GLB.
+		for (const field of ['name', 'memberNumber'] as const) {
+			const [u, v] = slotFor(field).anchor;
+
+			expect(u).toBeGreaterThan(0.5);
+			expect(v).toBeLessThan(0.5);
+		}
+	});
+
+	it('stacks the tier above name and memberNumber, flush to the same right edge', () => {
+		const tier = slotFor('tier');
+		const name = slotFor('name');
+		const memberNumber = slotFor('memberNumber');
+
+		expect(tier.anchor[1]).toBeGreaterThan(name.anchor[1]);
+		expect(name.anchor[1]).toBeGreaterThan(memberNumber.anchor[1]);
+		// Misma U en los tres = bandera por la derecha (con align 'right', el borde derecho común).
+		expect(tier.anchor[0]).toBe(name.anchor[0]);
+		expect(memberNumber.anchor[0]).toBe(name.anchor[0]);
+	});
+
+	it('keeps every slot inside the face even at its full maxWidth', () => {
+		// Con align 'right' el texto ocupa [anchorX − maxWidth, anchorX]: un maxWidth mayor que el
+		// hueco disponible sacaría el texto por el borde izquierdo de la tarjeta.
+		for (const slot of BADGE_TEXT_LAYOUT) {
+			const anchorX = (slot.anchor[0] - 0.5) * BADGE_FRONT_FACE.width;
+
+			expect(anchorX).toBeLessThanOrEqual(BADGE_FRONT_FACE.halfWidth);
+			expect(anchorX - slot.maxWidth).toBeGreaterThanOrEqual(-BADGE_FRONT_FACE.halfWidth);
+		}
+	});
+
+	it('draws the texts in front of the tier art and inside the depth frustum', () => {
+		expect(BADGE_TEXTURE.textLayerZ).toBeGreaterThan(BADGE_TEXTURE.artPosition[2]);
+		expect(BADGE_TEXTURE.artPosition[2]).toBeGreaterThan(BADGE_TEXTURE.backdropPosition[2]);
+		// Extrusión incluida (los textos crecen hacia +z), siguen muy por delante de la cámara.
+		const deepest = Math.max(...BADGE_TEXT_LAYOUT.map((slot) => slot.height));
+		expect(BADGE_TEXTURE.textLayerZ + deepest).toBeLessThan(BADGE_TEXTURE.cameraPosition[2]);
 	});
 });
 

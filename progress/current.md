@@ -103,10 +103,45 @@ Salidos de `progress/review_spec-03-F4-feature5.md`:
     se envió. No bloqueó (el leader y el reviewer verificaron el código real, limpio), pero una
     afirmación así invalida el informe como evidencia: verificar siempre el árbol.
 
+Salidos de `progress/review_spec-03-F4-feature6.md`:
+
+14. **A la N3 de T7 (P14)** — el z-fighting del pendiente 9 pasa a tener **TRES** capas: `textLayerZ`
+    (0.002) queda a un solo gap del arte (~8 cuantos de depth con `far` 2000). Si parpadea: **bajar
+    el `far` desde config**, NO subir el gap.
+15. **A la N3 de T7 (P15)** — el effect de colocación ahora depende de `member()` (antes no) ⇒ corre
+    una vez con la geometría VIEJA al cambiar de socio. Verificar que no se ve un frame mal escalado.
+16. **A la N3 de T7 (P16)** — al salir `position` de las options, el mesh nace en (0,0,0) hasta el
+    primer effect; debería ser invisible (sin geometría). Confirmar que no hay destello central al
+    montar.
+17. **A T8 (P17, BREAKING)** — forma de `BadgeTextSlot` (fuera `position`/`rotation`; entran
+    `anchor`/`align`/`maxWidth`) y desaparición de `BADGE_TEXT.maxWidth`.
+18. **A T8 (P18, aditivo)** — `BadgeTextAlign` y `BADGE_TEXTURE.textLayerZ` (verificados en el dist).
+    `BadgeFaceRect`, `uvAnchorToRtPosition` y `alignOffsetX` quedan **internos**.
+19. **A T8 (P19)** — documentar la **trampa de la V**: `anchor[1] = 0` es el borde **INFERIOR**, al
+    revés que los UV del GLB (donde v=0 es arriba).
+20. **A T8 (P20)** — corregir **H1**: el JSDoc de `badge.config.ts:297-298` sigue diciendo «tuplas
+    mutables a propósito porque los inputs de soba no admiten `readonly`», pero tras T6 ninguna tupla
+    del slot llega a soba (solo `size`/`height`, números). Se publica en el `.d.ts`. T8 es el único
+    pendiente que reabre `badge.config.ts`.
+
 **F4 no es cerrable hasta que se ejecute la N3 de T7**, aunque las features individuales se aprueben.
 
 ## Backlog aplazado (no entra en esta spec)
 
+- **P21 — `height` del texto depende de un detalle de soba.** La extrusión del `TextGeometry`
+  funciona SOLO mientras `angular-three-soba` importe el de **three-stdlib** (que traduce
+  `height`→`depth`); el de three 0.182 ya solo lee `depth`, con default **50**. Verificado por el
+  reviewer: `three-stdlib/geometries/TextGeometry.js:9,19` vs
+  `three/examples/jsm/geometries/TextGeometry.js:50` (donde `height` ni aparece), y soba importando
+  el primero (`...abstractions.mjs:8`). Si soba migra, la extrusión se va a 50 uds **en silencio**.
+  Vigilar en cada bump de `angular-three-soba`.
+- **P22 — mutante superviviente (H2 de la review de T6).** `fitTextScale(width, slot.maxWidth)` →
+  `fitTextScale(width, BADGE_TEXT_LAYOUT[0].maxWidth)` deja **160/160 en verde**: ningún test
+  distingue «`maxWidth` por slot» de «global igual al de `name`», que es justo el breaking de T6.
+  Menor porque un global *realista* (3.6 o 0.4) sí cae con `badge-texture.component.spec.ts:416`.
+  Cierre estimado: **2 líneas** en `badge-texture.component.spec.ts:455`.
+- **H3 (nit)** — `alignOffsetX` tiene `switch` exhaustivo sin `default` ⇒ `undefined`/`NaN` para un
+  consumidor **JS** que pase un `align` inválido.
 - **`BADGE_BAND.repeat` derivado del fov**: hoy es `-3.383` precalculado a mano desde
   `BADGE_CAMERA.fov`; si alguien cambia el fov queda obsoleto en silencio. Hacerlo **función pura
   evaluada al cargar el módulo (NO `computed()`**: no hay estado reactivo y rompería la config
@@ -327,3 +362,23 @@ sí y ambas desbloqueadas (T5 depende de 4 ✅; T6 depende de 3 ✅). T7 sigue `
   **Decisión de Sergio (2026-08-03)**: T5 y T6 se ejecutan **encadenadas, no en paralelo** — tocan
   los mismos tres ficheros (`badge-texture.ts`, `badge.config.ts`, `badge-texture.component.ts`) y
   dos implementers a la vez ahí es el mismo modo de fallo que costó T1/T3 en la incidencia de T4.
+- **2026-08-03** — Feature 6 (T6) **APPROVED**, 8/8 criterios. Informe en
+  `progress/impl_spec-03-F4-feature6.md`, veredicto en `progress/review_spec-03-F4-feature6.md`.
+  N2: `build` ✅ · `lint` ✅ · `test` **160/160** ✅ (baseline 133, **+27**) · `ng build
+  products-3d-playground` ✅. **Los textos vuelven al cuadro**: se cierra el estado intermedio que
+  T3 abrió.
+  Tocados: `badge.config.ts` (`BadgeTextSlot` nuevo, `BADGE_TEXT_LAYOUT` abajo-derecha,
+  `BADGE_TEXTURE.textLayerZ`), `badge-texture.ts` (`uvAnchorToRtPosition` + `alignOffsetX`) y
+  `badge-texture.component.ts` (método privado `fitTextMeshes`, **único escritor** del mesh).
+  **Auditoría de borrados (lo crítico de esta review): limpia.** Las 44 líneas eliminadas de `src/`
+  son código necesario por el cambio de forma; en los tres specs los `-` son **exactamente 4 y los 4
+  son `import`** — cero `it`/`expect`/`describe` borrados y cero tolerancias tocadas. El reviewer
+  comprobó en `ae35fa2` que ningún test viejo anclaba `position`/`rotation` ni el `maxWidth` global.
+  **Punto de tolerancias verificado, no aceptado de palabra**: la desviación es cuantización float32
+  de 1.3 (2.38e-8); comparar contra el ancho MEDIDO *aprieta* la aserción (delta 0, precisión 10).
+  **`textLayerZ` es pública por construcción**, no por decisión: `public-api.ts` hace `export *` de
+  `badge.config` y `architecture.md` §2 obliga a que la constante viva ahí (mismo caso que
+  `artPosition`/`backdropPosition` de T4). El `.d.ts` confirma superficie mínima.
+  Dos hallazgos del reviewer al backlog: **P21** (`height` depende de que soba siga usando el
+  `TextGeometry` de three-stdlib) y **P22/H2** (mutante superviviente: ningún test distingue el
+  `maxWidth` por slot del global). Pendientes derivados (14-20) arriba.

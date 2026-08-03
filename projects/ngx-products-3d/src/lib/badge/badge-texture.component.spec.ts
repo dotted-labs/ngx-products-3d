@@ -51,10 +51,17 @@ vi.hoisted(() => {
 });
 
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
-import { SRGBColorSpace } from 'three';
+import { BufferGeometry, Float32BufferAttribute, Mesh, SRGBColorSpace } from 'three';
 import type { BadgeMemberData, Products3dBadgeTheme } from '../types';
 import { Products3dBadgeTexture } from './badge-texture.component';
-import { BADGE_BASE_COLOR, BADGE_FRONT_FACE, BADGE_PHYSICS, BADGE_TEXTURE } from './badge.config';
+import {
+	BADGE_BASE_COLOR,
+	BADGE_FRONT_FACE,
+	BADGE_PHYSICS,
+	BADGE_TEXT_LAYOUT,
+	BADGE_TEXTURE,
+	type BadgeTextSlot,
+} from './badge.config';
 
 // Neutraliza el loader de soba: en jsdom sin WebGL no se debe cargar la textura base. La fn de
 // entrada se CAPTURA sin invocarla (lee el input `theme`, que aún no tiene valor en construcción →
@@ -112,6 +119,12 @@ interface TextureInternals {
 	baseMap: () => unknown;
 	baseTextureUrl: () => string;
 	textColor: () => string;
+	textSlots: () => {
+		slot: BadgeTextSlot;
+		text: string;
+		options: { size: number; height: number };
+	}[];
+	fitTextMeshes: (meshes: readonly Mesh[]) => void;
 }
 
 const MEMBER: BadgeMemberData = {
@@ -319,6 +332,166 @@ describe('Products3dBadgeTexture front asset ratio', () => {
 		const { warn } = mountWithTexture(resolvedTexture(0, 0));
 
 		expect(warn).not.toHaveBeenCalled();
+	});
+});
+
+/**
+ * Default de `height` (profundidad de extrusión del TextGeometry) del propio NgtsText3D, leído en
+ * `node_modules/angular-three-soba/fesm2022/angular-three-soba-abstractions.mjs:1303-1314`. Soba lo
+ * mergea sobre las options recibidas (`mergeInputs`), así que si el componente dejara de pasar el
+ * `height` del slot la extrusión caería aquí EN SILENCIO — veinte veces la del layout.
+ */
+const SOBA_TEXT3D_DEFAULT_HEIGHT = 0.2;
+
+describe('Products3dBadgeTexture text slots', () => {
+	it('renders one text per layout slot, in layout order, with the member data', () => {
+		const slots = internalsOf(createTextureScene()).textSlots();
+
+		expect(slots.map((entry) => entry.slot.field)).toEqual(
+			BADGE_TEXT_LAYOUT.map((slot) => slot.field),
+		);
+		expect(slots.map((entry) => entry.text)).toEqual(['Ada Lovelace', '#0042', 'GOLD']);
+	});
+
+	it('feeds the typography of each slot to the TextGeometry (no silent soba default)', () => {
+		const slots = internalsOf(createTextureScene()).textSlots();
+
+		for (const entry of slots) {
+			expect(entry.options.size).toBe(entry.slot.size);
+			// El criterio de la feature: `height` sigue alimentando la extrusión. Si desapareciera de
+			// las options, soba aplicaría su propio default sin avisar.
+			expect(entry.options.height).toBe(entry.slot.height);
+			expect(entry.options.height).not.toBe(SOBA_TEXT3D_DEFAULT_HEIGHT);
+		}
+	});
+
+	it('keeps placement out of the options: the mesh has a single writer', () => {
+		// La posición depende del ancho MEDIDO (anchor + align), así que la aplica fitTextMeshes. Si
+		// volviera a las options, el binding repondría el anchor sin el offset de alineado en cuanto
+		// cambiara el socio.
+		for (const entry of internalsOf(createTextureScene()).textSlots()) {
+			expect(entry.options).not.toHaveProperty('position');
+			expect(entry.options).not.toHaveProperty('scale');
+		}
+	});
+});
+
+describe('Products3dBadgeTexture text anchoring', () => {
+	/**
+	 * Mesh como el que crea NgtsText3D: geometría real de three con el bbox arrancando en x = 0 (el
+	 * origen de un TextGeometry es el borde izquierdo de su línea base). Sin WebGL: solo atributos.
+	 */
+	function textMesh(width: number): Mesh {
+		const geometry = new BufferGeometry();
+		geometry.setAttribute(
+			'position',
+			new Float32BufferAttribute([0, 0, 0, width, 0, 0, width, 0.05, 0], 3),
+		);
+		return new Mesh(geometry);
+	}
+
+	/** Posición X del anchor de un slot en unidades de mundo de la escena RT. */
+	function anchorX(slot: BadgeTextSlot): number {
+		return (slot.anchor[0] - 0.5) * BADGE_FRONT_FACE.width;
+	}
+
+	/** Posición Y del anchor de un slot en unidades de mundo de la escena RT. */
+	function anchorY(slot: BadgeTextSlot): number {
+		return (slot.anchor[1] - 0.5) * BADGE_FRONT_FACE.height;
+	}
+
+	/**
+	 * Ancho del bbox tal como lo mide el componente. Se lee del propio mesh (el atributo `position`
+	 * es float32, así que el ancho guardado no es exactamente el pedido) para que las aserciones de
+	 * borde comparen contra la medida real y no arrastren el redondeo del float32.
+	 */
+	function measuredWidth(mesh: Mesh): number {
+		const box = mesh.geometry.boundingBox;
+		if (!box) {
+			throw new Error('fitTextMeshes debe medir el bbox de la geometría');
+		}
+		return box.max.x - box.min.x;
+	}
+
+	it('shrinks a long text with a UNIFORM scale that respects the slot maxWidth', () => {
+		const [nameSlot] = BADGE_TEXT_LAYOUT;
+		const mesh = textMesh(nameSlot.maxWidth * 2);
+
+		internalsOf(createTextureScene()).fitTextMeshes([mesh]);
+
+		// Prohibición explícita de la spec: nunca comprimir en un solo eje.
+		expect(mesh.scale.x).toBe(mesh.scale.y);
+		expect(mesh.scale.y).toBe(mesh.scale.z);
+		// Se ha reducido de verdad (el doble de ancho → la mitad)...
+		expect(mesh.scale.x).toBeCloseTo(0.5, 6);
+		// ...y justo hasta caber en el maxWidth del slot, ni más ni menos.
+		expect(measuredWidth(mesh) * mesh.scale.x).toBeCloseTo(nameSlot.maxWidth, 10);
+	});
+
+	it('does not enlarge a text that already fits', () => {
+		const [nameSlot] = BADGE_TEXT_LAYOUT;
+		const mesh = textMesh(nameSlot.maxWidth / 2);
+
+		internalsOf(createTextureScene()).fitTextMeshes([mesh]);
+
+		expect(mesh.scale.x).toBe(1);
+		expect(mesh.scale.y).toBe(1);
+		expect(mesh.scale.z).toBe(1);
+	});
+
+	it('lands the right edge of a SHRUNK text on its anchor (offset over the scaled width)', () => {
+		const [nameSlot] = BADGE_TEXT_LAYOUT;
+		const mesh = textMesh(nameSlot.maxWidth * 2);
+
+		internalsOf(createTextureScene()).fitTextMeshes([mesh]);
+
+		const rawWidth = measuredWidth(mesh);
+		expect(mesh.position.x + rawWidth * mesh.scale.x).toBeCloseTo(anchorX(nameSlot), 10);
+		// ...y NO donde lo dejaría el ancho crudo: con el bbox sin escalar, este texto se despegaría
+		// del borde derecho justo la mitad de su ancho (criterio 4 de la feature).
+		expect(mesh.position.x).not.toBeCloseTo(anchorX(nameSlot) - rawWidth, 3);
+	});
+
+	it('anchors each slot of the shipped layout on its own anchor and the shared text layer', () => {
+		const meshes = BADGE_TEXT_LAYOUT.map((slot) => textMesh(slot.maxWidth / 2));
+
+		internalsOf(createTextureScene()).fitTextMeshes(meshes);
+
+		meshes.forEach((mesh, index) => {
+			const slot = BADGE_TEXT_LAYOUT[index];
+			// align 'right' con escala 1: el borde derecho (x + ancho) cae sobre el anchor.
+			expect(mesh.scale.x).toBe(1);
+			expect(mesh.position.x + measuredWidth(mesh)).toBeCloseTo(anchorX(slot), 10);
+			expect(mesh.position.y).toBeCloseTo(anchorY(slot), 10);
+			expect(mesh.position.z).toBe(BADGE_TEXTURE.textLayerZ);
+			// Y todos caen dentro de la cara: los textos vuelven al cuadro (fuera de él desde T3).
+			expect(mesh.position.x).toBeGreaterThanOrEqual(-BADGE_FRONT_FACE.halfWidth);
+			expect(Math.abs(mesh.position.y)).toBeLessThanOrEqual(BADGE_FRONT_FACE.halfHeight);
+		});
+	});
+
+	it('leaves a text with no measurable geometry on its anchor, never at NaN', () => {
+		// Estado real mientras la fuente no ha resuelto: NgtsText3D monta el mesh sin geometría. Un
+		// NaN en position/scale sacaría el texto de la escena para siempre.
+		const [nameSlot] = BADGE_TEXT_LAYOUT;
+		const mesh = new Mesh(new BufferGeometry());
+
+		internalsOf(createTextureScene()).fitTextMeshes([mesh]);
+
+		expect(mesh.scale.x).toBe(1);
+		expect(mesh.position.x).toBeCloseTo(anchorX(nameSlot), 10);
+		expect(mesh.position.y).toBeCloseTo(anchorY(nameSlot), 10);
+	});
+
+	it('ignores meshes without a matching slot instead of crashing', () => {
+		// El viewChildren puede ir por delante del computed en un cambio de layout.
+		const extra = textMesh(0.2);
+		const meshes = [...BADGE_TEXT_LAYOUT.map((slot) => textMesh(slot.maxWidth / 2)), extra];
+
+		internalsOf(createTextureScene()).fitTextMeshes(meshes);
+
+		expect(extra.position.x).toBe(0);
+		expect(extra.scale.x).toBe(1);
 	});
 });
 

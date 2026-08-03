@@ -8,7 +8,7 @@ import {
 	untracked,
 	viewChildren,
 } from '@angular/core';
-import { SRGBColorSpace } from 'three';
+import { SRGBColorSpace, type Mesh } from 'three';
 import { getInstanceState, NgtArgs } from 'angular-three';
 import { NgtsText3D } from 'angular-three-soba/abstractions';
 import {
@@ -20,12 +20,14 @@ import { resourceValueOrUndefined } from '../resource-value';
 import type { BadgeMemberData, Products3dBadgeTheme } from '../types';
 import { resolveBaseColor } from './badge-theme';
 import {
+	alignOffsetX,
 	badgeTextFor,
 	fitTextScale,
 	isRatioWithinTolerance,
 	resolveBaseTextureUrl,
+	uvAnchorToRtPosition,
 } from './badge-texture';
-import { BADGE_TEXT, BADGE_TEXT_LAYOUT, BADGE_TEXTURE } from './badge.config';
+import { BADGE_FRONT_FACE, BADGE_TEXT, BADGE_TEXT_LAYOUT, BADGE_TEXTURE } from './badge.config';
 
 /**
  * Escena secundaria del frente de la tarjeta (renderizada a textura por el NgtsRenderTexture
@@ -84,6 +86,8 @@ import { BADGE_TEXT, BADGE_TEXT_LAYOUT, BADGE_TEXTURE } from './badge.config';
 			propósito: la escena del RenderTexture no tiene luces y un material lit pintaría
 			negro; el texto es gráfico plano sobre la tarjeta, no necesita sombreado. Mientras
 			la fuente (theme.fontUrl) carga, NgtsText3D no crea geometría (mesh vacío, invisible).
+			El anclaje (anchor + align) y la reducción a maxWidth NO son bindings: necesitan el
+			ancho medido de la geometría y los aplica fitTextMeshes sobre el mesh.
 		-->
 		@for (entry of textSlots(); track entry.slot.field) {
 			<ngts-text-3d [font]="theme().fontUrl" [text]="entry.text" [options]="entry.options">
@@ -173,6 +177,13 @@ export class Products3dBadgeTexture {
 	/**
 	 * Slots de texto listos para el template: layout de config + texto formateado del socio
 	 * (fn pura badgeTextFor) + options de NgtsText3D. Reactivo solo a member().
+	 *
+	 * Las options llevan SOLO la tipografía (`size` = tamaño de fuente, `height` = profundidad de
+	 * extrusión del TextGeometry; sin `height` explícito soba aplicaría su default 0.2, veinte veces
+	 * la extrusión del layout). La colocación —posición y escala— NO va aquí: depende del ancho medido
+	 * del texto y la aplica `fitTextMeshes` sobre el mesh, que así es el ÚNICO escritor del
+	 * `position`/`scale` (con las dos vías, el binding de options repondría el anchor sin el offset de
+	 * alineado en cuanto cambiara el socio).
 	 */
 	protected readonly textSlots = computed(() => {
 		const member = this.member();
@@ -180,8 +191,6 @@ export class Products3dBadgeTexture {
 			slot,
 			text: badgeTextFor(member, slot.field, BADGE_TEXT.memberNumberPrefix),
 			options: {
-				position: slot.position,
-				rotation: slot.rotation,
 				size: slot.size,
 				height: slot.height,
 			},
@@ -236,22 +245,50 @@ export class Products3dBadgeTexture {
 			}
 		});
 
-		// Encaje de textos largos (nombre): NgtsResize NO existe en soba v4 (spike S3) → medición
-		// manual del bounding box de la geometría y scale del mesh, clampado a <=1 (fn pura
-		// fitTextScale, testeada). Reactivo al attach de la TextGeometry: NgtsText3D crea la
-		// geometría cuando la fuente resuelve (y la recrea al cambiar member/theme), y ese attach
-		// bumpea la signal nonObjects del instance state del mesh (mismo mecanismo interno que usa
-		// NgtsCenter). Se mide el bbox LOCAL (no afectado por el scale aplicado → sin feedback).
+		// Colocación de los textos (anclaje + encaje): NgtsResize NO existe en soba v4 (spike S3) y
+		// NgtsText3D no tiene alineado → hace falta medir el bbox de la geometría ya creada, así que
+		// esto vive en un effect y no en el template. Reactivo al attach de la TextGeometry:
+		// NgtsText3D crea la geometría cuando la fuente resuelve (y la recrea al cambiar
+		// member/theme), y ese attach bumpea la signal nonObjects del instance state del mesh (mismo
+		// mecanismo interno que usa NgtsCenter); la lectura de esa signal va dentro de fitTextMeshes,
+		// invocada de forma síncrona desde aquí, así que sigue trackeada.
 		effect(() => {
-			for (const text of this.textNodes()) {
-				const mesh = text.meshRef().nativeElement;
-				getInstanceState(mesh)?.nonObjects();
-				const geometry = mesh.geometry;
-				geometry.computeBoundingBox();
-				const box = geometry.boundingBox;
-				const width = box ? box.max.x - box.min.x : Number.NaN;
-				mesh.scale.setScalar(fitTextScale(width, BADGE_TEXT.maxWidth));
+			this.fitTextMeshes(this.textNodes().map((text) => text.meshRef().nativeElement));
+		});
+	}
+
+	/**
+	 * Ancla y encaja cada texto del frente sobre su slot de `BADGE_TEXT_LAYOUT`. Los `meshes` llegan
+	 * en el orden del template (`@for` sobre `textSlots()`), que es el del layout: el pareado es por
+	 * índice, con guarda por si el `viewChildren` va por delante del computed.
+	 *
+	 * Orden de las operaciones, que es lo que exige la spec (R3):
+	 * 1. se mide el bbox LOCAL de la geometría (no lo afecta el `scale` ya aplicado → sin feedback);
+	 * 2. se reduce con escala UNIFORME (`setScalar`, un único factor de `fitTextScale`): comprimir
+	 *    solo en X deformaría la tipografía y está prohibido por la spec;
+	 * 3. el offset de alineado se calcula sobre el ancho YA ESCALADO (`width * scale`), porque el mesh
+	 *    se reduce alrededor de su origen y con el ancho crudo el texto se despegaría de su anchor.
+	 */
+	private fitTextMeshes(meshes: readonly Mesh[]): void {
+		const slots = this.textSlots();
+		meshes.forEach((mesh, index) => {
+			const slot = slots[index]?.slot;
+			if (!slot) {
+				return;
 			}
+			getInstanceState(mesh)?.nonObjects();
+			const geometry = mesh.geometry;
+			geometry.computeBoundingBox();
+			const box = geometry.boundingBox;
+			const width = box ? box.max.x - box.min.x : Number.NaN;
+			const scale = fitTextScale(width, slot.maxWidth);
+			mesh.scale.setScalar(scale);
+			const [anchorX, anchorY] = uvAnchorToRtPosition(slot.anchor, BADGE_FRONT_FACE);
+			mesh.position.set(
+				anchorX + alignOffsetX(width * scale, slot.align),
+				anchorY,
+				BADGE_TEXTURE.textLayerZ,
+			);
 		});
 	}
 }

@@ -1,11 +1,13 @@
 import type { BadgeMemberData, Products3dBadgeTheme } from '../types';
 import {
+	alignOffsetX,
 	badgeTextFor,
 	fitTextScale,
 	isRatioWithinTolerance,
 	resolveBaseTextureUrl,
+	uvAnchorToRtPosition,
 } from './badge-texture';
-import { BADGE_FRONT_FACE, BADGE_TEXTURE } from './badge.config';
+import { BADGE_FRONT_FACE, BADGE_TEXT_LAYOUT, BADGE_TEXTURE } from './badge.config';
 
 const THEME: Products3dBadgeTheme = {
 	bandTextureUrl: 'assets/band.jpg',
@@ -70,6 +72,104 @@ describe('fitTextScale', () => {
 		expect(fitTextScale(Number.NaN, 3.6)).toBe(1);
 		expect(fitTextScale(0, 3.6)).toBe(1);
 		expect(fitTextScale(-2, 3.6)).toBe(1);
+	});
+});
+
+/**
+ * Cara frontal FIJADA A MANO desde el contrato del GLB (1.6 × 2.25): ancla independiente de la
+ * config, para que estos tests midan la conversión y no repitan la aritmética de `BADGE_FRONT_FACE`.
+ */
+const GLB_FACE = { width: 1.6, height: 2.25 };
+
+describe('uvAnchorToRtPosition', () => {
+	it('maps the center of the face to the origin of the RT scene', () => {
+		// El origen de la escena RT es lo que encuadra el frustum ortográfico centrado.
+		expect(uvAnchorToRtPosition([0.5, 0.5], GLB_FACE)).toEqual([0, 0]);
+	});
+
+	it('maps the four corners with the origin at the BOTTOM-LEFT of the face', () => {
+		const [blX, blY] = uvAnchorToRtPosition([0, 0], GLB_FACE);
+		const [trX, trY] = uvAnchorToRtPosition([1, 1], GLB_FACE);
+		const [tlX, tlY] = uvAnchorToRtPosition([0, 1], GLB_FACE);
+		const [brX, brY] = uvAnchorToRtPosition([1, 0], GLB_FACE);
+
+		expect([blX, blY]).toEqual([-0.8, -1.125]);
+		expect([trX, trY]).toEqual([0.8, 1.125]);
+		expect([tlX, tlY]).toEqual([-0.8, 1.125]);
+		expect([brX, brY]).toEqual([0.8, -1.125]);
+	});
+
+	it('grows V upwards (NOT the glTF UV convention of the card, where v = 0 is the top)', () => {
+		// La trampa de esta feature: los UV del GLB son `v = (1.125 − y) / 2.25` (v = 0 arriba). Si
+		// alguien "corrige" la fn a esa convención, este test cae y los textos salen espejados en
+		// vertical respecto al arte del frente.
+		const low = uvAnchorToRtPosition([0.5, 0.1], GLB_FACE)[1];
+		const high = uvAnchorToRtPosition([0.5, 0.9], GLB_FACE)[1];
+
+		expect(low).toBeLessThan(high);
+		expect(low).toBeLessThan(0);
+		expect(high).toBeGreaterThan(0);
+	});
+
+	it('places a bottom-right anchor in the bottom-right quadrant', () => {
+		const [x, y] = uvAnchorToRtPosition([0.92, 0.1], GLB_FACE);
+
+		expect(x).toBeCloseTo(0.672, 10);
+		expect(y).toBeCloseTo(-0.9, 10);
+	});
+
+	it('scales with the face rect it receives, not with a hardcoded 1.6 x 2.25', () => {
+		expect(uvAnchorToRtPosition([0.75, 0.75], { width: 4, height: 2 })).toEqual([1, 0.5]);
+		expect(uvAnchorToRtPosition([0.25, 0.25], { width: 4, height: 2 })).toEqual([-1, -0.5]);
+	});
+
+	it('derives the shipped layout anchors from BADGE_FRONT_FACE', () => {
+		// Contrato de punta a punta: la cara que consume el componente es la derivada del GLB.
+		for (const slot of BADGE_TEXT_LAYOUT) {
+			const [x, y] = uvAnchorToRtPosition(slot.anchor, BADGE_FRONT_FACE);
+			const [manualX, manualY] = uvAnchorToRtPosition(slot.anchor, GLB_FACE);
+
+			expect(x).toBeCloseTo(manualX, 10);
+			expect(y).toBeCloseTo(manualY, 10);
+		}
+	});
+});
+
+describe('alignOffsetX', () => {
+	it('does not move a left-aligned text (TextGeometry origin is its left edge)', () => {
+		expect(alignOffsetX(0.5, 'left')).toBe(0);
+	});
+
+	it('shifts a right-aligned text by its full width', () => {
+		expect(alignOffsetX(0.5, 'right')).toBe(-0.5);
+	});
+
+	it('shifts a centered text by half its width', () => {
+		expect(alignOffsetX(0.5, 'center')).toBe(-0.25);
+	});
+
+	it('lands the aligned edge exactly on the anchor', () => {
+		// Lo que de verdad significa alinear: con el offset aplicado, el borde pedido cae en el
+		// anchor. El texto ocupa [anchor + offset, anchor + offset + width].
+		const anchorX = 0.672;
+		const width = 0.4;
+		const leftEdge = (align: 'left' | 'right' | 'center') => anchorX + alignOffsetX(width, align);
+
+		expect(leftEdge('right') + width).toBeCloseTo(anchorX, 10);
+		expect(leftEdge('center') + width / 2).toBeCloseTo(anchorX, 10);
+		expect(leftEdge('left')).toBeCloseTo(anchorX, 10);
+	});
+
+	it('returns 0 for a non-measurable width (empty geometry bbox), for every align', () => {
+		// Sin medida no se puede alinear: el texto se queda en su anchor en lugar de irse a NaN
+		// (mismo criterio que fitTextScale). Un NaN aquí borraría el texto de la escena.
+		for (const align of ['left', 'right', 'center'] as const) {
+			expect(alignOffsetX(Number.NaN, align)).toBe(0);
+			expect(alignOffsetX(Number.POSITIVE_INFINITY, align)).toBe(0);
+			expect(alignOffsetX(Number.NEGATIVE_INFINITY, align)).toBe(0);
+			expect(alignOffsetX(0, align)).toBe(0);
+			expect(alignOffsetX(-1, align)).toBe(0);
+		}
 	});
 });
 
