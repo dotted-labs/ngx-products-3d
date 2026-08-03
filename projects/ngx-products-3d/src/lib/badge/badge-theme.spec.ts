@@ -1,5 +1,6 @@
 import type { Products3dBadgeTheme } from '../types';
-import { assertValidBadgeTheme } from './badge-theme';
+import { assertValidBadgeTheme, resolveBaseColor, resolveClipColor } from './badge-theme';
+import { BADGE_BASE_COLOR } from './badge.config';
 
 function makeTheme(overrides: Partial<Products3dBadgeTheme> = {}): Products3dBadgeTheme {
 	return {
@@ -57,6 +58,50 @@ describe('assertValidBadgeTheme', () => {
 	it('treats an empty string URL as missing (an empty URL cannot load an asset)', () => {
 		expect(() => assertValidBadgeTheme(makeTheme({ fontUrl: '' }))).toThrowError(
 			/\[ngx-products-3d\] badge: al tema le falta fontUrl/,
+		);
+	});
+});
+
+describe('resolveBaseColor', () => {
+	it('falls back to BADGE_BASE_COLOR (black) when the theme defines no baseColor', () => {
+		expect(resolveBaseColor(makeTheme())).toBe(BADGE_BASE_COLOR);
+		expect(BADGE_BASE_COLOR).toBe('#000000');
+	});
+
+	it('returns theme.baseColor when defined', () => {
+		expect(resolveBaseColor(makeTheme({ baseColor: '#123456' }))).toBe('#123456');
+	});
+
+	it('ignores colors.clip: the front backdrop is never tinted by the clip override', () => {
+		expect(
+			resolveBaseColor(makeTheme({ baseColor: '#123456', colors: { clip: '#ff0000' } })),
+		).toBe('#123456');
+		expect(resolveBaseColor(makeTheme({ colors: { clip: '#ff0000' } }))).toBe(BADGE_BASE_COLOR);
+	});
+});
+
+describe('resolveClipColor', () => {
+	it('falls back to BADGE_BASE_COLOR (black) when neither colors.clip nor baseColor are defined', () => {
+		expect(resolveClipColor(makeTheme())).toBe(BADGE_BASE_COLOR);
+	});
+
+	it('uses baseColor when only baseColor is defined', () => {
+		expect(resolveClipColor(makeTheme({ baseColor: '#123456' }))).toBe('#123456');
+	});
+
+	it('gives colors.clip priority over baseColor', () => {
+		expect(
+			resolveClipColor(makeTheme({ baseColor: '#123456', colors: { clip: '#ff0000' } })),
+		).toBe('#ff0000');
+	});
+
+	it('uses colors.clip when baseColor is absent', () => {
+		expect(resolveClipColor(makeTheme({ colors: { clip: '#ff0000' } }))).toBe('#ff0000');
+	});
+
+	it('ignores unrelated color overrides (band/text) when resolving the metal tint', () => {
+		expect(resolveClipColor(makeTheme({ colors: { band: '#00ff00', text: '#0000ff' } }))).toBe(
+			BADGE_BASE_COLOR,
 		);
 	});
 });

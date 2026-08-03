@@ -1,10 +1,163 @@
 {
   "project": "ngx-products-3d",
-  "description": "Productos 3D interactivos para Angular (Angular Three v4). Sin spec activa: docs/specs/active/ está vacía y esta lista se rellena al activar la siguiente spec. Specs completadas y archivadas en docs/specs/ (spec-02 física/correa/drag, spec-03 visuales del badge, spec-03-F3 assets GLB reales); bitácora de sesiones y decisiones en progress/history.md; backlog conocido para la próxima spec en progress/current.md.",
+  "description": "Productos 3D interactivos para Angular (Angular Three v4). Spec activa: docs/specs/active/spec-03-F4v2-front-design.md (diseño frontal de la card: webp con alpha, baseColor y cámara ortográfica de la RenderTexture). Revisión previa de la spec, con las correcciones aplicadas y sus referencias fichero:línea, en progress/review_spec-03-F4v2.md. Specs completadas y archivadas en docs/specs/; bitácora en progress/history.md. Los breaking de esta spec se pliegan en la 0.3.0, que sigue SIN publicar: no mergear a main hasta cerrar la spec.",
   "rules": {
     "one_feature_at_a_time": true,
     "require_tests_to_close": true,
     "valid_status": ["pending", "in_progress", "done", "blocked"]
   },
-  "features": []
+  "features": [
+    {
+      "id": 1,
+      "name": "badge-theme-base-color",
+      "title": "Tema: campo baseColor (default negro) y resolución del color de clip/clamp",
+      "spec": "spec-03-F4v2",
+      "phase": 4,
+      "depends_on": [],
+      "description": "T1. Añadir `baseColor?: string` a `Products3dBadgeTheme` (types.ts) con JSDoc que explique dónde acaba cada parte del color (frente = quad de la escena RT; clip/clamp = tinte del metal; canto/dorso fuera de alcance). Default en `badge.config.ts` como constante (p. ej. BADGE_BASE_COLOR = '#000000'), NUNCA literal en componentes. Fn pura en `badge-theme.ts` que resuelve el color efectivo del metal con la prioridad `theme.colors?.clip ?? theme.baseColor ?? BADGE_BASE_COLOR`, y otra (o la misma con parámetro) para el color del fondo del frente. No tocar todavía ningún componente: esta feature es tipos + config + fn pura + tests.",
+      "acceptance": [
+        "`Products3dBadgeTheme.baseColor` existe, es opcional y está documentado con el reparto frente/clip/canto",
+        "El default vive en badge.config.ts como constante exportada, no como literal en el código",
+        "Fn pura de resolución testeada N1: sin nada → default negro; solo baseColor → baseColor; colors.clip + baseColor → gana colors.clip; colors.clip sin baseColor → gana colors.clip",
+        "pnpm build termina sin errores",
+        "pnpm ng lint ngx-products-3d termina sin errores",
+        "pnpm ng test ngx-products-3d muestra > 0 tests y todos verdes"
+      ],
+      "status": "done"
+    },
+    {
+      "id": 2,
+      "name": "badge-metal-tint-base-color",
+      "title": "Tinte de clip/clamp con el color resuelto (colors.clip > baseColor)",
+      "spec": "spec-03-F4v2",
+      "phase": 4,
+      "depends_on": [1],
+      "description": "T2. En el effect de tinte del metal de `badge-scene.component.ts` (hoy ~línea 390), sustituir la lectura directa de `theme().colors?.clip` por la fn pura de la feature 1. Se sigue CLONANDO el material `metal` antes de teñir (`tintMetalMaterial`) y liberando el clon en `onCleanup`: el GLB comparte esa instancia entre clip y clamp y la cachea entre recargas. Con baseColor default negro la rama 'sin color → material original del GLB' deja de alcanzarse (siempre habrá color ⇒ siempre clona): eliminarla o documentar por qué se conserva, sin dejar código muerto sin explicar. NO tocar el `color` del meshPhysicalMaterial de la tarjeta: se queda en blanco (three multiplica map × color y el map es la RenderTexture).",
+      "acceptance": [
+        "clip y clamp se tiñen con `colors.clip ?? baseColor`; cambiar cualquiera de los dos en el tema se refleja sin recrear el canvas",
+        "El material `metal` del GLB no se muta: se clona y el clon anterior se libera en onCleanup al cambiar el tema o destruir",
+        "El meshPhysicalMaterial de la tarjeta sigue sin `color` propio (o en blanco), con un comentario que explique el porqué",
+        "pnpm build termina sin errores",
+        "pnpm ng lint ngx-products-3d termina sin errores",
+        "pnpm ng test ngx-products-3d muestra > 0 tests y todos verdes"
+      ],
+      "status": "done"
+    },
+    {
+      "id": 3,
+      "name": "badge-rt-orthographic-frustum",
+      "title": "RenderTexture 32:45: FBO 1600x2250 y cámara ortográfica manual",
+      "spec": "spec-03-F4v2",
+      "phase": 4,
+      "depends_on": [],
+      "description": "T3. Núcleo de la corrección. (a) `BADGE_TEXTURE.size` → `width: 1600` / `height: 2250`, actualizando `renderTextureOptions` de `badge-scene.component.ts` y `badge-scene.component.spec.ts:333-334`. (b) Constante DERIVADA de la cara frontal en badge.config.ts a partir de `BADGE_PHYSICS.cardColliderHalfExtents` ([0.8, 1.125, 0.01]) → 1.6 x 2.25; prohibido duplicar literales. (c) En `badge-texture.component.ts`, sustituir `NgtsPerspectiveCamera` por `NgtsOrthographicCamera` con `makeDefault: true`, **`manual: true`** y frustum explícito left/right/top/bottom desde esa constante. El `manual: true` es OBLIGATORIO: `updateCamera()` del core (angular-three.mjs:601) sobrescribe el frustum con el `size` del store salvo que la cámara sea manual, y el portal del NgtsRenderTexture no pasa `size` propio (angular-three-soba-staging.mjs:3315) → hereda el del canvas. Sin él el frustum pasa a ~1900 unidades y la tarjeta se ve como un punto. CONSERVAR `mapRepeat`/`mapOffset` (inversión de V). Retirar `cameraPosition`/`planeSize` solo si dejan de usarse (el plano lo rehace la feature 4).",
+      "acceptance": [
+        "El FBO es 1600x2250 y el frustum de la cámara de la escena RT es exactamente [-0.8, 0.8] x [-1.125, 1.125]",
+        "La cámara ortográfica lleva `manual: true` y un comentario que cite por qué (updateCamera del core + portal sin size)",
+        "El rect de la cara frontal se DERIVA de BADGE_PHYSICS.cardColliderHalfExtents; no hay literales 1.6/2.25 sueltos",
+        "Test N1 de invariante: ratio del FBO == ratio del frustum == ratio de la cara del GLB (dentro de tolerancia)",
+        "BADGE_TEXTURE.mapRepeat/mapOffset siguen aplicándose en las options del NgtsRenderTexture",
+        "pnpm build termina sin errores",
+        "pnpm ng lint ngx-products-3d termina sin errores",
+        "pnpm ng test ngx-products-3d muestra > 0 tests y todos verdes"
+      ],
+      "status": "done"
+    },
+    {
+      "id": 4,
+      "name": "badge-rt-backdrop-webp",
+      "title": "Escena RT: quad de baseColor + plano del webp del tier con alpha",
+      "spec": "spec-03-F4v2",
+      "phase": 4,
+      "depends_on": [1, 3],
+      "description": "T4. En `badge-texture.component.ts`: (a) quad de fondo OPACO del tamaño exacto del rect frontal, con `meshBasicMaterial` del color resuelto en la feature 1 — es la única vía por la que baseColor llega al frente (el `color` del material de la tarjeta no puede usarse: map × color). (b) Encima, plano del mismo tamaño con la textura del tier (`resolveBaseTextureUrl`, ya existente) y `transparent: true` para que el alpha del webp revele el quad. (c) Separación en z pequeña y explícita desde config (con ortográfica el depth es lineal: sin z-fighting). (d) Mantener el gate `hasValue()` de la textura (una URL rota degrada a 'sin arte', no blanquea la escena) y el `colorSpace = SRGBColorSpace` tras resolver. (e) Retirar `planeSize: [5, 5]`. Materiales basic (unlit): la escena RT no tiene luces.",
+      "acceptance": [
+        "Las zonas transparentes del webp muestran baseColor; cambiar baseColor en el tema se ve en el frente sin recrear el canvas",
+        "El quad y el plano cubren exactamente el rect frontal derivado (sin bandas ni márgenes)",
+        "Una URL de textura rota sigue degradando a frente sin arte (con warn dev), nunca a escena en blanco",
+        "planeSize [5,5] ya no existe y ninguna constante de la escena RT es literal en el componente",
+        "pnpm build termina sin errores",
+        "pnpm ng lint ngx-products-3d termina sin errores",
+        "pnpm ng test ngx-products-3d muestra > 0 tests y todos verdes"
+      ],
+      "status": "in_progress"
+    },
+    {
+      "id": 5,
+      "name": "badge-asset-ratio-warn",
+      "title": "Validación del ratio del asset frontal con warn en dev",
+      "spec": "spec-03-F4v2",
+      "phase": 4,
+      "depends_on": [4],
+      "description": "T5. Fn pura `isRatioWithinTolerance(width, height, target, tolerance): boolean` (dimensiones no medibles / 0 / NaN → tratar como válido para no gritar sobre un recurso a medio cargar, criterio a documentar). Objetivo = ratio del rect frontal derivado (feature 3); tolerancia 1% en config. En el effect que ya resuelve la textura base, leer `map.image.width/height` y emitir `console.warn` con prefijo `[ngx-products-3d]` cuando se desvíe, indicando el ratio esperado, el medido y la URL. Solo bajo `ngDevMode` (único console permitido en la lib, ver conventions.md). Un ratio inválido NO impide renderizar: avisa y sigue.",
+      "acceptance": [
+        "isRatioWithinTolerance testeada N1: exacto, dentro de tolerancia, fuera por poco, fuera por mucho, dimensiones no medibles",
+        "Un asset con ratio ≠ 32:45 emite un warn dev con URL, ratio esperado y ratio medido; el frente se sigue renderizando",
+        "La tolerancia y el ratio objetivo salen de badge.config.ts (derivados), no de literales en el componente",
+        "pnpm build termina sin errores",
+        "pnpm ng lint ngx-products-3d termina sin errores",
+        "pnpm ng test ngx-products-3d muestra > 0 tests y todos verdes"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": 6,
+      "name": "badge-text-anchoring",
+      "title": "Textos anclados abajo-derecha con alineado y reducción uniforme",
+      "spec": "spec-03-F4v2",
+      "phase": 4,
+      "depends_on": [3],
+      "description": "T6. Nueva forma de `BadgeTextSlot` (`field`, `anchor`, `align`, `size`, `height`, `maxWidth`; sale `position` y `rotation`) y nuevo `BADGE_TEXT_LAYOUT` con los tres slots abajo-derecha. `BADGE_TEXT.maxWidth` global desaparece a favor del `maxWidth` por slot. Dos fns puras nuevas junto a `fitTextScale`: `uvAnchorToRtPosition(anchor, face)` (anchor normalizado con origen ABAJO-IZQUIERDA de la cara → x = (u−0.5)·1.6, y = (v−0.5)·2.25; NO son los UV del GLB, donde v=0 es arriba) y `alignOffsetX(bboxWidth, align)`. En el effect de medición de `badge-texture.component.ts` (~línea 149): calcular primero la escala uniforme con `fitTextScale`, y aplicar el offset de alineado sobre el ancho YA ESCALADO. Prohibido tocar `scale.x` y `scale.y` con valores distintos. OJO: son cambios de API pública (public-api.ts hace export * de badge.config) que se pliegan en la 0.3.0.",
+      "acceptance": [
+        "name y memberNumber quedan anclados abajo-derecha y alineados a la derecha; tier encima según el layout",
+        "uvAnchorToRtPosition y alignOffsetX son fns puras con test N1 (esquinas, centro, cada valor de align)",
+        "Un nombre largo se reduce con escala UNIFORME (test que verifique scale.x === scale.y) y respeta el maxWidth del slot",
+        "El offset de alineado se calcula sobre el ancho ya escalado (test o comentario que lo demuestre)",
+        "`height` sigue alimentando la extrusión del TextGeometry (no cae al default de soba en silencio)",
+        "pnpm build termina sin errores",
+        "pnpm ng lint ngx-products-3d termina sin errores",
+        "pnpm ng test ngx-products-3d muestra > 0 tests y todos verdes"
+      ],
+      "status": "pending"
+    },
+    {
+      "id": 7,
+      "name": "badge-playground-front-demo",
+      "title": "Playground: webp por tier, control de baseColor y verificación visual N3",
+      "spec": "spec-03-F4v2",
+      "phase": 4,
+      "depends_on": [4, 5, 6],
+      "description": "T7. BLOQUEADA hasta que Sergio deje los seis .webp 1600x2250 con alpha en projects/products-3d-playground/public/assets/ (base-gold, base-silver, base-default, base-ember-gold, base-ember-silver, base-ember-default), al menos uno con zonas transparentes generosas, más un PNG 256x256 conservado como base-wrong-ratio.png. Trabajo: apuntar los dos temas demo a los .webp, añadir un control de baseColor al formulario, cablear un tier al asset de ratio inválido para ver el warn, y borrar los PNG que queden huérfanos. Redactar la checklist N3 en el informe: ajuste del fondo a la silueta, transparencias mostrando baseColor, anclaje abajo-derecha, tipografía sin deformar, nombre largo, tinte de clip/clamp, warn de ratio, y —explícito— redimensionar la ventana para confirmar que el frente YA NO se deforma. Anotar también qué se ve en canto y dorso (fuera de alcance) y si el arte sale lavado por doble tone mapping.",
+      "acceptance": [
+        "Los dos temas demo cargan .webp 1600x2250 y el fallback por tier sigue funcionando",
+        "El formulario permite cambiar baseColor y el efecto se ve en frente y clip/clamp en caliente",
+        "Un tier apunta a un asset de ratio inválido y dispara el warn dev en consola",
+        "Checklist N3 redactada y ejecutada en el informe, incluyendo la prueba de redimensionado de ventana",
+        "pnpm build termina sin errores",
+        "pnpm ng lint ngx-products-3d termina sin errores",
+        "pnpm ng test ngx-products-3d muestra > 0 tests y todos verdes",
+        "pnpm ng build products-3d-playground termina sin errores"
+      ],
+      "status": "blocked"
+    },
+    {
+      "id": 8,
+      "name": "badge-front-docs-changelog",
+      "title": "README publicado y CHANGELOG 0.3.0 con el contrato del frente",
+      "spec": "spec-03-F4v2",
+      "phase": 4,
+      "depends_on": [1, 2, 3, 4, 5, 6, 7],
+      "description": "T8. README de la librería (el que viaja a npm): sección del contrato del asset frontal (32:45, 1600x2250, webp con alpha, sRGB, borde superior de la imagen = borde superior de la tarjeta, la lib avisa si el ratio se desvía >1%), `baseColor` en la tabla del tema con el reparto frente/clip/canto, y la forma nueva de BadgeTextSlot / BADGE_TEXT_LAYOUT. CHANGELOG: AMPLIAR la entrada 0.3.0 existente (no crear 0.4.0: la 0.3.0 no llegó a publicarse) con los breaking de esta spec — BadgeTextSlot cambia de forma, BADGE_TEXTURE.size → width/height, BADGE_TEXT.maxWidth desaparece — y con la corrección del frente deformándose con la ventana, que la 0.3.0 listaba como 'Conocido, no corregido'.",
+      "acceptance": [
+        "El README publicado documenta el contrato del asset frontal, baseColor y el layout de textos",
+        "La entrada 0.3.0 del CHANGELOG recoge los breaking de esta spec y mueve el defecto de deformación de 'conocido' a 'corregido'",
+        "No se crea una versión 0.4.0 ni se altera projects/ngx-products-3d/package.json (sigue en 0.3.0)",
+        "El README del tarball generado por pnpm build contiene la documentación nueva",
+        "pnpm build termina sin errores",
+        "pnpm ng lint ngx-products-3d termina sin errores",
+        "pnpm ng test ngx-products-3d muestra > 0 tests y todos verdes"
+      ],
+      "status": "pending"
+    }
+  ]
 }

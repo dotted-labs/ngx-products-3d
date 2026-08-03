@@ -25,9 +25,24 @@ export interface Products3dBadgeTheme {
 	defaultBaseTextureUrl: string;
 	/** Typeface JSON (three) para Text3D */
 	fontUrl: string;
+	/**
+	 * Color base global del modelo. Default `BADGE_BASE_COLOR` (`badge.config.ts`, negro).
+	 *
+	 * Reparto (spec-03-F4v2 R2), porque no llega igual a todas las piezas:
+	 * - **Frente de la tarjeta**: pinta el quad de fondo opaco de la escena de la RenderTexture,
+	 *   detrás del arte del tier. Las zonas transparentes del asset lo revelan. NO es el `color`
+	 *   del material de la tarjeta: three multiplica `map × color` y el `map` es la RenderTexture,
+	 *   así que un color oscuro ahí pintaría el frente entero de negro.
+	 * - **clip/clamp**: tinte del material `metal` del GLB, con `colors.clip` como override
+	 *   específico que gana a este global (`colors.clip ?? baseColor`).
+	 * - **Canto y dorso de la tarjeta**: fuera de alcance. Comparten material y `map` con el
+	 *   frente, así que muestran lo que caiga en sus UV; este color no los controla.
+	 */
+	baseColor?: string;
 	colors?: {
 		band?: string;
 		text?: string;
+		/** Tinte del metal de clip/clamp. Override específico: gana a `baseColor` */
 		clip?: string;
 	};
 	material?: Partial<BadgePhysicalMaterialOptions>;

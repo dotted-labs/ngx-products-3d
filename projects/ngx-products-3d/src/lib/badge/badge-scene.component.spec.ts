@@ -59,7 +59,7 @@ import {
 	type NgtrRopeJointParams,
 	type NgtrSphericalJointParams,
 } from 'angular-three-rapier';
-import { Vector2 } from 'three';
+import { Mesh, MeshStandardMaterial, Vector2 } from 'three';
 import { PRODUCTS_3D_CONFIG } from '../tokens';
 import type {
 	BadgeMemberData,
@@ -70,6 +70,7 @@ import type {
 import { Products3dBadgeScene } from './badge-scene.component';
 import {
 	BADGE_BAND,
+	BADGE_BASE_COLOR,
 	BADGE_CAMERA,
 	BADGE_CARD_MODEL,
 	BADGE_LAYOUT,
@@ -83,7 +84,10 @@ import {
 // URL que el componente deriva del config (vía la fn de entrada) para verificar que NO está
 // hardcodeada. `value()` = undefined simula "recurso sin resolver" (el @if del template lo
 // gatea). `vi.hoisted` expone el registro dentro de la factory izada de `vi.mock`.
-const gltfMock = vi.hoisted(() => ({ urls: [] as string[] }));
+// `data` permite a los tests del tinte del metal simular el GLB YA resuelto (nodos clip/clamp +
+// material 'metal' reales de three, que no necesitan WebGL para clonarse ni teñirse). Por defecto
+// `undefined` = recurso sin resolver; se resetea en el beforeEach para no filtrarse entre tests.
+const gltfMock = vi.hoisted(() => ({ urls: [] as string[], data: undefined as unknown }));
 // La correa lee su textura vía textureResource. Se CAPTURA la fn de entrada (no se invoca en
 // construcción: `theme` es un input y aún no tiene valor → NG0950 si se lee eager, a diferencia
 // del gltf que deriva la URL de un inject disponible ya). Los tests la invocan tras setInput.
@@ -95,7 +99,12 @@ const textureMock = vi.hoisted(() => ({ inputs: [] as (() => string)[] }));
 vi.mock('angular-three-soba/loaders', () => ({
 	gltfResource: (input: () => string) => {
 		gltfMock.urls.push(input());
-		return { value: () => undefined, scene: () => null, hasValue: () => false, status: () => 'loading' };
+		return {
+			value: () => gltfMock.data,
+			scene: () => null,
+			hasValue: () => gltfMock.data !== undefined,
+			status: () => (gltfMock.data === undefined ? 'loading' : 'resolved'),
+		};
 	},
 	textureResource: (input: () => string) => {
 		textureMock.inputs.push(input);
@@ -188,7 +197,49 @@ function internalsOf(fixture: ComponentFixture<Products3dBadgeScene>): SceneInte
 	return fixture.componentInstance as unknown as SceneInternals;
 }
 
+/** Forma del GLB de la tarjeta que consume la escena (nodos card/clip/clamp + materiales). */
+interface TestGltf {
+	nodes: { card: Mesh; clip: Mesh; clamp: Mesh };
+	materials: { base: MeshStandardMaterial; metal: MeshStandardMaterial };
+}
+
+/**
+ * GLB ya resuelto para los tests del tinte: clip y clamp COMPARTEN la misma instancia de `metal`,
+ * igual que el GLB real. Es justo la instancia que el effect no debe mutar (la cachea el loader
+ * entre recargas). Materiales y meshes de three no necesitan WebGL para clonarse ni teñirse.
+ */
+function makeGltfData(): TestGltf {
+	const metal = new MeshStandardMaterial();
+	const nodes = { card: new Mesh(), clip: new Mesh(), clamp: new Mesh() };
+	nodes.clip.material = metal;
+	nodes.clamp.material = metal;
+	return { nodes, materials: { base: new MeshStandardMaterial(), metal } };
+}
+
+/** Escena con el GLB resuelto y los effects ya ejecutados (detectChanges los descarga). */
+function createSceneWithGltf(
+	data: TestGltf,
+	theme: Products3dBadgeTheme,
+): ComponentFixture<Products3dBadgeScene> {
+	gltfMock.data = data;
+	const fixture = createScene();
+	fixture.componentRef.setInput('theme', theme);
+	fixture.detectChanges();
+	return fixture;
+}
+
+/** Material aplicado al nodo clip tras el effect de tinte. */
+function clipMaterialOf(data: TestGltf): MeshStandardMaterial {
+	return data.nodes.clip.material as MeshStandardMaterial;
+}
+
 describe('Products3dBadgeScene', () => {
+	beforeEach(() => {
+		// Por defecto el GLB queda SIN resolver (los tests del tinte lo sobrescriben): así el
+		// estado del mock no se filtra de un test a otro.
+		gltfMock.data = undefined;
+	});
+
 	it("defaults cardBodyType to 'dynamic' (kinematicPosition switch belongs to the drag feature)", () => {
 		const fixture = createScene();
 
@@ -326,17 +377,31 @@ describe('Products3dBadgeScene', () => {
 	it('derives the render texture options from BADGE_TEXTURE and BADGE_MAP_ANISOTROPY', () => {
 		const fixture = createScene();
 
-		// Config-driven, cero números mágicos: width/height = size del FBO; frames continuo
+		// Config-driven, cero números mágicos: width/height = resolución del FBO; frames continuo
 		// (porqué documentado en BADGE_TEXTURE.frames); anisotropy y la transformada UV van en
 		// las options porque son propiedades de la textura (fbo.texture), no del material.
 		expect(internalsOf(fixture).renderTextureOptions).toEqual({
-			width: BADGE_TEXTURE.size,
-			height: BADGE_TEXTURE.size,
+			width: BADGE_TEXTURE.width,
+			height: BADGE_TEXTURE.height,
 			frames: BADGE_TEXTURE.frames,
 			anisotropy: BADGE_MAP_ANISOTROPY,
 			repeat: BADGE_TEXTURE.mapRepeat,
 			offset: BADGE_TEXTURE.mapOffset,
 		});
+	});
+
+	it('requests a render texture FBO with the aspect ratio of the card front face', () => {
+		const fixture = createScene();
+		const { width, height } = internalsOf(fixture).renderTextureOptions;
+
+		// El FBO que pide la ESCENA (no solo el de la config) tiene que llevar el ratio de la cara
+		// frontal del GLB: un FBO cuadrado sobre una cara 32:45 estira el arte y los textos
+		// (spec-03-F4v2, diagnóstico). Ancla independiente: el 32:45 del contrato del modelo.
+		expect(width / height).toBeCloseTo(
+			BADGE_PHYSICS.cardColliderHalfExtents[0] / BADGE_PHYSICS.cardColliderHalfExtents[1],
+			10,
+		);
+		expect(width).not.toBe(height);
 	});
 
 	it('samples the card map with the V inverted and the U untouched', () => {
@@ -432,5 +497,106 @@ describe('Products3dBadgeScene', () => {
 		expect(second).toBe(first);
 		expect(second.x).toBe(1280);
 		expect(second.y).toBe(720);
+	});
+
+	describe('metal tint (clip/clamp)', () => {
+		it('tints clip and clamp with theme.colors.clip on a single shared clone', () => {
+			const data = makeGltfData();
+
+			createSceneWithGltf(data, { ...THEME, colors: { clip: '#ff0055' } });
+
+			// Un solo clon para los dos nodos: el GLB los servía con la MISMA instancia de metal.
+			expect(data.nodes.clip.material).toBe(data.nodes.clamp.material);
+			expect(clipMaterialOf(data).color.getHexString()).toBe('ff0055');
+		});
+
+		it('clones the GLB metal material instead of mutating it', () => {
+			const data = makeGltfData();
+			const original = data.materials.metal;
+
+			createSceneWithGltf(data, { ...THEME, colors: { clip: '#ff0055' } });
+
+			// El GLB cachea `metal` entre recargas y lo comparte: teñirlo in situ filtraría el
+			// color a otros usos y persistiría tras cambiar de tema.
+			expect(data.nodes.clip.material).not.toBe(original);
+			expect(original.color.getHexString()).toBe('ffffff');
+		});
+
+		it('falls back to theme.baseColor when theme.colors.clip is absent', () => {
+			const data = makeGltfData();
+
+			createSceneWithGltf(data, { ...THEME, baseColor: '#123456' });
+
+			expect(clipMaterialOf(data).color.getHexString()).toBe('123456');
+		});
+
+		it('falls back to BADGE_BASE_COLOR when neither colors.clip nor baseColor are set', () => {
+			const data = makeGltfData();
+
+			createSceneWithGltf(data, THEME);
+
+			// Con el default negro siempre hay color ⇒ el metal SIEMPRE se tiñe: la rama
+			// "sin color → material original del GLB" ya no existe (spec-03-F4v2 R2).
+			expect(clipMaterialOf(data).color.getHexString()).toBe(BADGE_BASE_COLOR.slice(1));
+			expect(data.nodes.clip.material).not.toBe(data.materials.metal);
+		});
+
+		it('lets theme.colors.clip win over theme.baseColor', () => {
+			const data = makeGltfData();
+
+			createSceneWithGltf(data, {
+				...THEME,
+				baseColor: '#123456',
+				colors: { clip: '#ff0055' },
+			});
+
+			expect(clipMaterialOf(data).color.getHexString()).toBe('ff0055');
+		});
+
+		it('retints on theme.colors.clip changes without recreating the scene, disposing the old clone', () => {
+			const data = makeGltfData();
+			const fixture = createSceneWithGltf(data, { ...THEME, colors: { clip: '#ff0055' } });
+			const instance = fixture.componentInstance;
+			const firstClone = clipMaterialOf(data);
+			let disposals = 0;
+			firstClone.addEventListener('dispose', () => {
+				disposals += 1;
+			});
+
+			fixture.componentRef.setInput('theme', { ...THEME, colors: { clip: '#00ff00' } });
+			fixture.detectChanges();
+
+			expect(fixture.componentInstance).toBe(instance);
+			expect(clipMaterialOf(data)).not.toBe(firstClone);
+			expect(clipMaterialOf(data).color.getHexString()).toBe('00ff00');
+			expect(data.nodes.clamp.material).toBe(data.nodes.clip.material);
+			// onCleanup del effect: clonar en cada re-ejecución no acumula materiales en GPU.
+			expect(disposals).toBe(1);
+		});
+
+		it('retints on theme.baseColor changes without recreating the scene', () => {
+			const data = makeGltfData();
+			const fixture = createSceneWithGltf(data, { ...THEME, baseColor: '#123456' });
+			const instance = fixture.componentInstance;
+
+			fixture.componentRef.setInput('theme', { ...THEME, baseColor: '#abcdef' });
+			fixture.detectChanges();
+
+			expect(fixture.componentInstance).toBe(instance);
+			expect(clipMaterialOf(data).color.getHexString()).toBe('abcdef');
+		});
+
+		it('disposes the tinted clone when the scene is destroyed', () => {
+			const data = makeGltfData();
+			const fixture = createSceneWithGltf(data, { ...THEME, colors: { clip: '#ff0055' } });
+			let disposals = 0;
+			clipMaterialOf(data).addEventListener('dispose', () => {
+				disposals += 1;
+			});
+
+			fixture.destroy();
+
+			expect(disposals).toBe(1);
+		});
 	});
 });

@@ -39,6 +39,7 @@ import { cursorFor } from './badge-cursor';
 import { projectPointerToWorld, subtractInto } from './badge-drag';
 import { mergeMaterialOptions, tintMetalMaterial } from './badge-material';
 import { lerpTowards, spinCorrectedAngvelY } from './badge-stabilize';
+import { resolveClipColor } from './badge-theme';
 import { Products3dBadgeTexture } from './badge-texture.component';
 import {
 	BADGE_BAND,
@@ -128,7 +129,8 @@ interface BadgeGLTF {
 				mesh propio con meshPhysicalMaterial (clearcoat) en vez del material 'base' del GLB, y
 				preserva position/quaternion/scale del nodo card (identidad en el modelo actual).
 				clip/clamp siguen como primitive con su material 'metal' y su transform de nodo; el
-				tinte opcional del metal se aplica por código en un effect (ver metalEffect).
+				tinte del metal se aplica por código en un effect sobre un CLON del material (ver el
+				effect de tinte del constructor), nunca mutando el del GLB.
 			-->
 			@if (gltfData(); as data) {
 				<ngt-group [position]="cardModelPosition">
@@ -138,6 +140,15 @@ interface BadgeGLTF {
 						[quaternion]="data.nodes.card.quaternion"
 						[scale]="data.nodes.card.scale"
 					>
+						<!--
+							SIN binding [color] a propósito: se queda en el blanco por defecto de three.
+							El map de este material es la RenderTexture del frente y el fragment shader
+							multiplica map × color, así que enchufar aquí el baseColor del tema (negro
+							por defecto) pintaría el frente entero de negro. El baseColor llega al
+							frente por dentro de la escena de la RenderTexture, como quad de fondo opaco
+							bajo el arte del tier (spec-03-F4v2 R2); en el metal de clip/clamp entra por
+							el effect de tinte del constructor.
+						-->
 						<ngt-mesh-physical-material
 							[clearcoat]="materialOpts().clearcoat"
 							[clearcoatRoughness]="materialOpts().clearcoatRoughness"
@@ -150,7 +161,8 @@ interface BadgeGLTF {
 								Frente dinámico de la tarjeta: NgtsRenderTexture se attachea como map del
 								material (attach="map") y renderiza la escena secundaria
 								(Products3dBadgeTexture: textura base del tier + textos del socio, con su
-								propia cámara makeDefault dentro del portal) a un FBO de BADGE_TEXTURE.size².
+								propia cámara ortográfica makeDefault dentro del portal) a un FBO de
+								BADGE_TEXTURE.width × height (ratio de la cara frontal, no cuadrado).
 								anisotropy va en las options y NO como binding del material: es propiedad de
 								la textura (soba la aplica como parameters sobre fbo.texture); el binding
 								[mapAnisotropy] de la feature 3 era un no-op (el renderer solo "pierce"
@@ -241,15 +253,16 @@ export class Products3dBadgeScene {
 	protected readonly cardModelPosition = BADGE_CARD_MODEL.groupPosition;
 	/**
 	 * Options del NgtsRenderTexture del frente de la tarjeta, todas desde config: tamaño del
-	 * FBO (BADGE_TEXTURE.size), frames continuo (porqué frente a frames:1 en
+	 * FBO (BADGE_TEXTURE.width/height, 1600×2250 = ratio 32:45 de la cara frontal; NO cuadrado,
+	 * o el frente se estira), frames continuo (porqué frente a frames:1 en
 	 * BADGE_TEXTURE.frames), anisotropy (propiedad de la TEXTURA — soba la aplica sobre
 	 * fbo.texture —, no del material; ver BADGE_MAP_ANISOTROPY) y la transformada UV
 	 * repeat/offset que invierte la V (convención glTF del GLB vs orientación GL de un render
 	 * target; derivación en BADGE_TEXTURE.mapRepeat).
 	 */
 	protected readonly renderTextureOptions: Partial<NgtsRenderTextureOptions> = {
-		width: BADGE_TEXTURE.size,
-		height: BADGE_TEXTURE.size,
+		width: BADGE_TEXTURE.width,
+		height: BADGE_TEXTURE.height,
 		frames: BADGE_TEXTURE.frames,
 		anisotropy: BADGE_MAP_ANISOTROPY,
 		repeat: BADGE_TEXTURE.mapRepeat,
@@ -382,23 +395,21 @@ export class Products3dBadgeScene {
 			});
 		}
 
-		// Tinte del metal del clip/clamp, reactivo a gltf.value() + theme(). Se CLONA el material
-		// 'metal' antes de teñir: el GLB comparte esa instancia entre clip y clamp (y la cachea
-		// entre recargas), así que mutar el original filtraría el color a otros usos y persistiría.
-		// Sin color → material original (idempotente). onCleanup libera el clon anterior al cambiar
-		// theme o al destruir → sin fugas.
+		// Tinte del metal del clip/clamp, reactivo a gltf.value() + theme(). El color lo resuelve
+		// resolveClipColor(): theme.colors.clip (override específico) ?? theme.baseColor ?? el
+		// default de config. Con el default negro SIEMPRE hay color, así que el tinte se aplica
+		// siempre y ya NO existe la rama "sin color → material original del GLB": era inalcanzable
+		// (spec-03-F4v2 R2, nota de implementación).
+		// Se CLONA el material 'metal' antes de teñir: el GLB comparte esa instancia entre clip y
+		// clamp (y la cachea entre recargas), así que mutar el original filtraría el color a otros
+		// usos y persistiría. onCleanup libera el clon anterior en cada re-ejecución (cambio de
+		// theme o de GLB) y al destruir → clonar siempre no acumula materiales.
 		effect((onCleanup) => {
 			const data = this.gltfData();
 			if (!data) {
 				return;
 			}
-			const clipColor = this.theme().colors?.clip;
-			if (!clipColor) {
-				data.nodes.clip.material = data.materials.metal;
-				data.nodes.clamp.material = data.materials.metal;
-				return;
-			}
-			const tinted = tintMetalMaterial(data.materials.metal, clipColor);
+			const tinted = tintMetalMaterial(data.materials.metal, resolveClipColor(this.theme()));
 			data.nodes.clip.material = tinted;
 			data.nodes.clamp.material = tinted;
 			onCleanup(() => tinted.dispose());

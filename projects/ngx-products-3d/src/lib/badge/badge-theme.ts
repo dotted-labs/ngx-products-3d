@@ -1,4 +1,5 @@
 import type { Products3dBadgeTheme } from '../types';
+import { BADGE_BASE_COLOR } from './badge.config';
 
 const REQUIRED_THEME_URL_FIELDS = ['defaultBaseTextureUrl', 'fontUrl'] as const;
 
@@ -16,4 +17,21 @@ export function assertValidBadgeTheme(theme: Products3dBadgeTheme): Products3dBa
 		);
 	}
 	return theme;
+}
+
+/**
+ * Color base del frente de la tarjeta: el que pinta el quad de fondo opaco de la escena de la
+ * RenderTexture, visible allí donde el arte del tier es transparente (`baseColor` → default).
+ */
+export function resolveBaseColor(theme: Products3dBadgeTheme): string {
+	return theme.baseColor ?? BADGE_BASE_COLOR;
+}
+
+/**
+ * Color con el que se tiñe el metal de clip/clamp: `colors.clip` es el override específico y gana
+ * al `baseColor` global, que a su vez cae al default. Siempre devuelve color (nunca `undefined`),
+ * así que el tinte del metal deja de tener rama "sin color → material original del GLB".
+ */
+export function resolveClipColor(theme: Products3dBadgeTheme): string {
+	return theme.colors?.clip ?? resolveBaseColor(theme);
 }

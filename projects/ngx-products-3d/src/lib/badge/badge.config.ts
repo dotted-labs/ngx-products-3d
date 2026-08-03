@@ -120,9 +120,62 @@ export const BADGE_CARD_MODEL = {
 	groupPosition: [0, 0, 0] as [number, number, number],
 } as const;
 
+/**
+ * Rect de la cara frontal de la tarjeta, en unidades de mundo. DERIVADO, nunca literal: sale de
+ * `BADGE_PHYSICS.cardColliderHalfExtents` ([0.8, 1.125, 0.01]), que ya es el contrato del GLB (el
+ * accessor POSITION de `cardMesh` es X[-0.8, 0.8] · Y[-1.125, 1.125] · Z[-0.01, 0.01], y su UV 0-1
+ * cubre esa cara entera: `u = (x + 0.8) / 1.6`, `v = (1.125 − y) / 2.25`).
+ *
+ * Es la ÚNICA fuente del ratio 32:45 (1.6 × 2.25 ≈ 0.711) al que deben alinearse las tres
+ * relaciones de aspecto encadenadas del frente (spec-03-F4v2):
+ * 1. el FBO de la RenderTexture (`BADGE_TEXTURE.width`/`height`),
+ * 2. el frustum de la cámara ortográfica de la escena RT (`BADGE_TEXTURE.cameraFrustum`),
+ * 3. la propia cara del GLB.
+ * Si se desalinean, el arte y los textos del frente salen estirados. El test de invariante de
+ * `badge.config.spec.ts` compara las tres contra el 32:45 del contrato del modelo.
+ */
+export const BADGE_FRONT_FACE = {
+	halfWidth: BADGE_PHYSICS.cardColliderHalfExtents[0],
+	halfHeight: BADGE_PHYSICS.cardColliderHalfExtents[1],
+	width: BADGE_PHYSICS.cardColliderHalfExtents[0] * 2,
+	height: BADGE_PHYSICS.cardColliderHalfExtents[1] * 2,
+} as const;
+
+/**
+ * Color base del modelo cuando el tema no define `Products3dBadgeTheme.baseColor` (spec-03-F4v2 R2).
+ * Único sitio donde vive este literal: los componentes lo consumen a través de las fns de
+ * resolución de `badge-theme.ts`, nunca escriben el color a mano.
+ */
+export const BADGE_BASE_COLOR = '#000000';
+
+/**
+ * Separación en z entre las capas de la escena de textura (fondo opaco de `baseColor` → arte del
+ * tier). Se declara aquí, y no como literal en el componente, para que el orden de las capas sea
+ * una decisión de config.
+ *
+ * Con la cámara ORTOGRÁFICA el depth es lineal (no hay pérdida de precisión con la distancia), así
+ * que un delta mínimo basta para ordenar las capas sin z-fighting. Se mantiene MUY por debajo de la
+ * z de los textos (`BADGE_TEXT_LAYOUT`) para que el arte nunca los tape.
+ */
+const BADGE_RT_LAYER_GAP = 0.001;
+
 export const BADGE_TEXTURE = {
-	/** Resolución de la RenderTexture del frente de la tarjeta */
-	size: 2000,
+	/**
+	 * Resolución en píxeles del FBO de la RenderTexture del frente. NO es cuadrada: su ratio tiene
+	 * que ser el de la cara frontal (`BADGE_FRONT_FACE`, 32:45) o el frente sale estirado. A la
+	 * densidad de referencia del arte del tema (1000 px por unidad de mundo), 1.6 × 2.25 uds =
+	 * **1600 × 2250 px** (spec-03-F4v2 R1).
+	 *
+	 * Se dejan explícitos en vez de calcularlos (`BADGE_FRONT_FACE.width * 1000`) a propósito: así
+	 * el test de invariante de `badge.config.spec.ts` puede DETECTAR una desalineación real, en
+	 * lugar de volverla imposible por construcción y quedarse sin poder fallar. Recalcular ambos si
+	 * cambia `BADGE_PHYSICS.cardColliderHalfExtents` (= si cambia el GLB).
+	 *
+	 * Coste: `fboParams` de soba multiplica por `viewport.dpr()`, así que a dpr 2 son 3200 × 4500
+	 * (menos píxel que el 2000² anterior, que daba 4000 × 4000).
+	 */
+	width: 1600,
+	height: 2250,
 	/**
 	 * Frames que renderiza la RenderTexture: `Infinity` = re-render continuo (un render del
 	 * frente por frame del canvas). NO se usa `frames: 1` (render estático): el contador de
@@ -131,8 +184,8 @@ export const BADGE_TEXTURE = {
 	 * el montaje async del contenido (textura base, fuente del Text3D) y los cambios de
 	 * member/theme NO lo resetean → el frente quedaría en blanco/congelado
 	 * (angular-three-soba/fesm2022/angular-three-soba-staging.mjs:3132-3159). Coste asumido y
-	 * documentado (spec-03 Fase 4): un render extra de una escena mínima (plano + 3 textos) a un
-	 * FBO de `size`² por frame — mismo patrón que el ejemplo lanyard de drei (RenderTexture sin
+	 * documentado (spec-03 Fase 4): un render extra de una escena mínima (plano + 3 textos) al FBO
+	 * de `width` × `height` por frame — mismo patrón que el ejemplo lanyard de drei (RenderTexture sin
 	 * `frames`, default Infinity).
 	 */
 	frames: Infinity,
@@ -158,8 +211,44 @@ export const BADGE_TEXTURE = {
 	mapOffset: [0, 1] as [number, number],
 	/** Posición de la cámara propia (makeDefault) de la escena de textura */
 	cameraPosition: [0, 0, 5] as [number, number, number],
-	/** Tamaño (ancho, alto) del plano de fondo; cubre el encuadre de la cámara a z=0 */
-	planeSize: [5, 5] as [number, number],
+	/**
+	 * Frustum EXPLÍCITO (unidades de mundo) de la cámara ORTOGRÁFICA de la escena de textura:
+	 * encuadra exactamente la cara frontal, derivado de `BADGE_FRONT_FACE` (nada de literales
+	 * ±0.8 / ±1.125 sueltos). Con la cámara mirando −Z desde `cameraPosition`, este rect es lo que
+	 * acaba ocupando el FBO entero → ratio del frustum = ratio del FBO = ratio de la cara.
+	 *
+	 * Se pasa SIEMPRE junto con `manual: true` en las options de la cámara: sin `manual`, ni el
+	 * frustum ni el encuadre están garantizados (el porqué, con referencias a `node_modules`, en
+	 * `cameraOptions` de `badge-texture.component.ts`).
+	 */
+	cameraFrustum: {
+		left: -BADGE_FRONT_FACE.halfWidth,
+		right: BADGE_FRONT_FACE.halfWidth,
+		top: BADGE_FRONT_FACE.halfHeight,
+		bottom: -BADGE_FRONT_FACE.halfHeight,
+	},
+	/**
+	 * Tamaño (ancho, alto, unidades de mundo) de los DOS quads del fondo de la escena de textura: el
+	 * de `baseColor` y el del arte del tier. Es exactamente el rect de la cara frontal
+	 * (`BADGE_FRONT_FACE`), que es también lo que encuadra `cameraFrustum` → los quads llenan el FBO
+	 * borde a borde: sin bandas muertas, sin recorte y sin estirar el arte (spec-03-F4v2 R1).
+	 *
+	 * Derivado, nunca literal: el 5 × 5 anterior venía del encuadre de la cámara en perspectiva que
+	 * retiró la feature 3 y dejaba el arte recortado contra el frustum de 1.6 × 2.25.
+	 */
+	frontPlaneSize: [BADGE_FRONT_FACE.width, BADGE_FRONT_FACE.height] as [number, number],
+	/**
+	 * Posición del quad OPACO de `baseColor`: la capa del fondo, en el plano z = 0 de la escena de
+	 * textura (el mismo plano en el que el frustum encuadra la cara).
+	 */
+	backdropPosition: [0, 0, 0] as [number, number, number],
+	/**
+	 * Posición del plano del arte del tier (webp con alpha): el mismo rect que el fondo, adelantado
+	 * `BADGE_RT_LAYER_GAP` hacia la cámara para que quede DELANTE del quad de `baseColor` y sus
+	 * zonas transparentes lo revelen. Invertir el signo dejaría el arte detrás del fondo opaco, es
+	 * decir invisible.
+	 */
+	artPosition: [0, 0, BADGE_RT_LAYER_GAP] as [number, number, number],
 } as const;
 
 /** Campo de `BadgeMemberData` que pinta cada slot de texto del frente de la tarjeta */
