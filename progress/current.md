@@ -29,11 +29,31 @@ Ninguna feature arrancada todavía. Baseline Nivel 2 verde antes de repartir tra
 
 ### Decisiones de Sergio (2026-08-01)
 
-- **Assets**: los aporta él (seis `.webp` 1600×2250 con alpha, lista en la spec). Feature 7
-  **`blocked`** hasta entonces.
+- **Assets**: los aporta él. ⚠️ **REVISADO el 2026-08-03, ver abajo**: de seis `.webp` a **UNA**
+  imagen. Feature 7 sigue **`blocked`** hasta que llegue.
 - **Versionado**: los breaking se **pliegan en la 0.3.0**, que sigue sin publicar. → **no mergear a
   `main` hasta cerrar la spec**, o CI publicaría una 0.3.0 a medias.
 - **Canto y dorso de la tarjeta**: fuera de alcance; se anota lo que se vea en la N3.
+
+### Decisión de Sergio (2026-08-03): alcance de T7 reducido
+
+Los seis `.webp` pasan a ser **UNA sola imagen** (webp o png) con **canal alfa** y **ratio 32:45**.
+
+- **Por qué**: la lib solo exige `defaultBaseTextureUrl`; `baseTextures` por tier es opcional y cae
+  al fallback (`badge-texture.ts:16`), así que una imagen ejercita el camino completo: color base
+  visible a través del alpha + arte encima + resolución por tier. Las otras cinco solo daban
+  variedad en la demo.
+- **El tamaño en píxeles es libre** mientras el ratio sea 32:45. Los 1600×2250 eran solo la
+  densidad de referencia (1000 px/unidad); 800×1125 o 1024×1440 valen igual. T5 avisa >1% de
+  desviación pero **no rompe**: renderiza estirado.
+- **Los seis PNG demo eran 256×256 SIN alfa** (verificado leyendo las cabeceras PNG): ratio 1:1 y
+  sin transparencia ⇒ inservibles para el frente nuevo. **Cinco borrados**; el sexto conservado y
+  renombrado a **`base-wrong-ratio.png`**, que hace de fixture del warn de ratio de T5 → Sergio
+  tampoco tiene que producir ese.
+- **Estado interino conocido**: los temas demo (`badge-demo.component.ts:17-31`,
+  `badge-demo.routes.ts:20-23`) siguen apuntando a los PNG borrados hasta que T7 los recablee. La
+  demo degrada a **solo-baseColor con warn dev**: es exactamente la degradación diseñada en T4, no
+  un bug.
 
 ## Orden de trabajo
 
