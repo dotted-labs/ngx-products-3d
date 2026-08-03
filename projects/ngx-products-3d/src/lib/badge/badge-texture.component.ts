@@ -5,6 +5,7 @@ import {
 	CUSTOM_ELEMENTS_SCHEMA,
 	effect,
 	input,
+	untracked,
 	viewChildren,
 } from '@angular/core';
 import { SRGBColorSpace } from 'three';
@@ -18,7 +19,12 @@ import { textureResource } from 'angular-three-soba/loaders';
 import { resourceValueOrUndefined } from '../resource-value';
 import type { BadgeMemberData, Products3dBadgeTheme } from '../types';
 import { resolveBaseColor } from './badge-theme';
-import { badgeTextFor, fitTextScale, resolveBaseTextureUrl } from './badge-texture';
+import {
+	badgeTextFor,
+	fitTextScale,
+	isRatioWithinTolerance,
+	resolveBaseTextureUrl,
+} from './badge-texture';
 import { BADGE_TEXT, BADGE_TEXT_LAYOUT, BADGE_TEXTURE } from './badge.config';
 
 /**
@@ -192,6 +198,29 @@ export class Products3dBadgeTexture {
 			}
 			map.colorSpace = SRGBColorSpace;
 			map.needsUpdate = true;
+
+			// Validación del ratio del asset (spec-03-F4v2 R1): el arte cubre el rect de la cara
+			// frontal, así que un ratio distinto del de esa cara sale estirado en esa misma
+			// proporción. Solo avisa: NO se deja de renderizar (un frente estirado sigue siendo
+			// mejor que ninguno, y el arreglo está en el asset, no en la lib).
+			if (ngDevMode) {
+				// `Texture.image` es `any` en three (HTMLImageElement, ImageBitmap, {data,width,height}…)
+				// → narrow a lo único que se lee aquí. Mientras la imagen no expone tamaño, las
+				// dimensiones no son medibles y la fn pura las trata como válidas (no avisa).
+				const image = map.image as { width?: number; height?: number } | null | undefined;
+				const width = image?.width ?? Number.NaN;
+				const height = image?.height ?? Number.NaN;
+				const { assetAspect, assetAspectTolerance } = BADGE_TEXTURE;
+				if (!isRatioWithinTolerance(width, height, assetAspect, assetAspectTolerance)) {
+					// La URL se lee SIN trackear: el aviso es one-shot por textura resuelta, y
+					// trackearla suscribiría este effect a cambios de `member` (p. ej. el nombre del
+					// socio) que no cargan textura nueva y repetirían el warn.
+					const url = untracked(() => this.baseTextureUrl());
+					console.warn(
+						`[ngx-products-3d] badge: la textura base del frente no respeta el ratio de la cara de la tarjeta y se verá estirada. Esperado ${assetAspect.toFixed(4)} (±${assetAspectTolerance * 100}%), medido ${(width / height).toFixed(4)} (${width}×${height} px): ${url}. El frente se renderiza igualmente.`,
+					);
+				}
+			}
 		});
 
 		// Aviso dev cuando la textura base entra en error (status() es reactivo y no lanza).

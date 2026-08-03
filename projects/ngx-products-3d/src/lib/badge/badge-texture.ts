@@ -33,3 +33,26 @@ export function fitTextScale(bboxWidth: number, maxWidth: number): number {
 	}
 	return Math.min(1, maxWidth / bboxWidth);
 }
+
+/**
+ * ¿El ratio `width / height` de un asset cae dentro de `tolerance` (desviación RELATIVA, 0.01 = 1%)
+ * del ratio `target`? Se usa para avisar en dev de un arte del frente que saldría estirado.
+ *
+ * Dimensiones NO MEDIBLES —0, negativas, `NaN` o `±Infinity`— devuelven `true` a propósito: son un
+ * recurso a medio cargar o un entorno que no expone el tamaño intrínseco de la imagen, no un asset
+ * mal exportado. La validación existe para señalar arte con el ratio equivocado, no para gritar
+ * sobre una medición ausente (mismo criterio que `fitTextScale` con un bbox no medible). Idem con un
+ * `target` no medible: sin referencia válida no hay nada que comparar.
+ */
+export function isRatioWithinTolerance(
+	width: number,
+	height: number,
+	target: number,
+	tolerance: number,
+): boolean {
+	const measurable = (value: number): boolean => Number.isFinite(value) && value > 0;
+	if (!measurable(width) || !measurable(height) || !measurable(target)) {
+		return true;
+	}
+	return Math.abs(width / height - target) <= target * tolerance;
+}

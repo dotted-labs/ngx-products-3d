@@ -249,6 +249,25 @@ export const BADGE_TEXTURE = {
 	 * decir invisible.
 	 */
 	artPosition: [0, 0, BADGE_RT_LAYER_GAP] as [number, number, number],
+	/**
+	 * Ratio (ancho / alto) que debe cumplir el arte del tier para no salir estirado: el de la cara
+	 * frontal (`BADGE_FRONT_FACE`, 32:45 ≈ 0.711). DERIVADO, nunca literal — es el mismo rect que
+	 * encuadra `cameraFrustum` y que cubren los quads de `frontPlaneSize`, así que el arte se estira
+	 * exactamente en la proporción en la que su ratio se desvíe de éste.
+	 *
+	 * Es el contrato que la lib valida al resolver la textura base (`isRatioWithinTolerance` +
+	 * warn dev en `badge-texture.component.ts`); el asset recomendado, 1600 × 2250 px, lo cumple.
+	 */
+	assetAspect: BADGE_FRONT_FACE.width / BADGE_FRONT_FACE.height,
+	/**
+	 * Desviación RELATIVA máxima del ratio del arte del tier respecto a `assetAspect` antes de que la
+	 * lib avise en dev: 0.01 = **1%** (spec-03-F4v2 R1). Fracción, no porcentaje.
+	 *
+	 * No es cero a propósito: un asset exportado a un número redondo de píxeles rara vez da el ratio
+	 * exacto (p. ej. 1600 × 2249 se desvía un 0.04%) y ese error es invisible en pantalla. Un 1% sobre
+	 * la altura de la tarjeta son ~22 px del asset de referencia: por debajo no merece un aviso.
+	 */
+	assetAspectTolerance: 0.01,
 } as const;
 
 /** Campo de `BadgeMemberData` que pinta cada slot de texto del frente de la tarjeta */

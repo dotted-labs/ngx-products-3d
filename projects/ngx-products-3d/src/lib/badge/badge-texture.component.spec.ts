@@ -51,26 +51,49 @@ vi.hoisted(() => {
 });
 
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
+import { SRGBColorSpace } from 'three';
 import type { BadgeMemberData, Products3dBadgeTheme } from '../types';
 import { Products3dBadgeTexture } from './badge-texture.component';
 import { BADGE_BASE_COLOR, BADGE_FRONT_FACE, BADGE_PHYSICS, BADGE_TEXTURE } from './badge.config';
 
 // Neutraliza el loader de soba: en jsdom sin WebGL no se debe cargar la textura base. La fn de
 // entrada se CAPTURA sin invocarla (lee el input `theme`, que aún no tiene valor en construcción →
-// NG0950 si se evalúa eager), mismo patrón que badge-scene.component.spec.ts. hasValue()=false +
-// status()='loading' (default) = recurso sin resolver → baseMap() undefined y los effects no
-// disparan. `status` es mutable para poder simular una URL rota (ver el bloque «degraded front»);
-// se fija ANTES de crear el componente, porque no es una signal y no reevalúa por sí sola.
+// NG0950 si se evalúa eager), mismo patrón que badge-scene.component.spec.ts. Por defecto
+// `value`=undefined → hasValue()=false y status()='loading' = recurso sin resolver → baseMap()
+// undefined y los effects no disparan. `status` y `value` son mutables para simular una URL rota
+// (ver «degraded front») o una textura ya resuelta con dimensiones conocidas (ver «front asset
+// ratio»); se fijan ANTES de crear el componente, porque no son signals y no reevalúan por sí solas.
 const textureMock = vi.hoisted(() => ({
 	inputs: [] as (() => string)[],
 	status: 'loading' as 'loading' | 'error',
+	value: undefined as ResolvedTextureMock | undefined,
 }));
 vi.mock('angular-three-soba/loaders', () => ({
 	textureResource: (input: () => string) => {
 		textureMock.inputs.push(input);
-		return { value: () => undefined, hasValue: () => false, status: () => textureMock.status };
+		return {
+			value: () => textureMock.value,
+			hasValue: () => textureMock.value !== undefined,
+			status: () => textureMock.status,
+		};
 	},
 }));
+
+/**
+ * Mínimo de `Texture` de three que toca el effect de la textura base: el `image` del que se leen las
+ * dimensiones del asset más las dos propiedades que el effect muta (`colorSpace`, `needsUpdate`).
+ * No se instancia una `Texture` real: haría falta WebGL y no aportaría nada a lo que se verifica.
+ */
+interface ResolvedTextureMock {
+	image?: { width?: number; height?: number };
+	colorSpace?: string;
+	needsUpdate?: boolean;
+}
+
+/** Textura resuelta de `width × height` px, tal como la vería el effect tras cargar el asset. */
+function resolvedTexture(width: number, height: number): ResolvedTextureMock {
+	return { image: { width, height } };
+}
 
 interface TextureInternals {
 	cameraOptions: {
@@ -228,6 +251,74 @@ describe('Products3dBadgeTexture base color', () => {
 		fixture.componentRef.setInput('theme', { ...THEME, baseColor: '#ff0000' });
 
 		expect(internals.baseColor()).toBe('#ff0000');
+	});
+});
+
+describe('Products3dBadgeTexture front asset ratio', () => {
+	afterEach(() => {
+		textureMock.value = undefined;
+		vi.restoreAllMocks();
+	});
+
+	/** Monta la escena con la textura base YA resuelta y espía el warn dev del effect. */
+	function mountWithTexture(texture: ResolvedTextureMock) {
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+		textureMock.value = texture;
+		const fixture = createTextureScene();
+		fixture.detectChanges();
+		return { fixture, warn };
+	}
+
+	it('warns in dev with the url, the expected ratio and the measured one', () => {
+		// El PNG cuadrado que el playground conserva para esta prueba (T7): 40% fuera del 32:45.
+		const texture = resolvedTexture(256, 256);
+		const { fixture, warn } = mountWithTexture(texture);
+
+		expect(warn).toHaveBeenCalledTimes(1);
+		const message = String(warn.mock.calls[0][0]);
+		expect(message).toContain('[ngx-products-3d]');
+		// Las tres cosas que exige el criterio de aceptación: url, ratio esperado y ratio medido.
+		expect(message).toContain('assets/base-gold.webp');
+		expect(message).toContain(BADGE_TEXTURE.assetAspect.toFixed(4));
+		expect(message).toContain((256 / 256).toFixed(4));
+		// Y el ratio esperado que se imprime NO es un literal del componente: sale de la config.
+		expect(BADGE_TEXTURE.assetAspect.toFixed(4)).not.toBe((256 / 256).toFixed(4));
+		// Avisa y sigue: la textura se aplica igual (el plano del arte se monta y se corrige el
+		// colorSpace), un frente estirado nunca degrada a frente sin arte.
+		expect(internalsOf(fixture).baseMap()).toBe(texture);
+		expect(texture.colorSpace).toBe(SRGBColorSpace);
+	});
+
+	it('stays silent for an asset that matches the front face ratio', () => {
+		const texture = resolvedTexture(BADGE_TEXTURE.width, BADGE_TEXTURE.height);
+		const { fixture, warn } = mountWithTexture(texture);
+
+		expect(warn).not.toHaveBeenCalled();
+		expect(internalsOf(fixture).baseMap()).toBe(texture);
+		expect(texture.colorSpace).toBe(SRGBColorSpace);
+	});
+
+	it('stays silent for a deviation inside the configured tolerance', () => {
+		// 1600 × 2240 = 0.45% de desviación: por debajo del 1% de BADGE_TEXTURE.assetAspectTolerance.
+		const { warn } = mountWithTexture(resolvedTexture(1600, 2240));
+
+		expect(warn).not.toHaveBeenCalled();
+	});
+
+	it('stays silent when the image exposes no measurable size', () => {
+		// Recurso resuelto pero sin tamaño intrínseco (o a medio decodificar): no se avisa sobre una
+		// medición ausente, y el colorSpace se sigue corrigiendo.
+		const texture: ResolvedTextureMock = {};
+		const { warn } = mountWithTexture(texture);
+
+		expect(warn).not.toHaveBeenCalled();
+		expect(texture.colorSpace).toBe(SRGBColorSpace);
+	});
+
+	it('stays silent for zero-sized image dimensions', () => {
+		const { warn } = mountWithTexture(resolvedTexture(0, 0));
+
+		expect(warn).not.toHaveBeenCalled();
 	});
 });
 

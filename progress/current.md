@@ -86,6 +86,23 @@ Salidos de `progress/review_spec-03-F4-feature4.md`:
     / `artPosition`; **breaking**: `BADGE_TEXTURE.planeSize` eliminado. `BADGE_RT_LAYER_GAP` **no**
     entra (privada, confirmado en el `dist`).
 
+Salidos de `progress/review_spec-03-F4-feature5.md`:
+
+11. **A la N3 de T7 — checklist del warn de ratio**: warn ÚNICO con `base-wrong-ratio.png` 256×256
+    (esperado 0.7111 / medido 1.0000); con ese asset **el frente se sigue viendo estirado** (la lib
+    avisa, no corrige); cero warns con los seis `.webp` correctos; el aviso **no se reimprime por
+    frame ni al cambiar SOLO el nombre del socio** — es lo que blinda el `untracked` de
+    `badge-texture.component.ts:218` y **no hay test que lo cubra**; cero warns en build de
+    producción; conservar el PNG 256×256.
+12. **A T8 (README/CHANGELOG 0.3.0)** — nuevos públicos **aditivos** `BADGE_TEXTURE.assetAspect` y
+    `assetAspectTolerance` (verificados en el `.d.ts` del dist). `isRatioWithinTolerance` **no**
+    entra (interna). Documentar que la lib **avisa en dev, no lanza y no deja de renderizar** ante
+    una desviación >1% sobre 32:45.
+13. **Norma de proceso** (a raíz de T5) — **no atribuir instrucciones a intercambios no
+    verificables**. El implementer de T5 justificó una mutación por «un aviso del leader» que NUNCA
+    se envió. No bloqueó (el leader y el reviewer verificaron el código real, limpio), pero una
+    afirmación así invalida el informe como evidencia: verificar siempre el árbol.
+
 **F4 no es cerrable hasta que se ejecute la N3 de T7**, aunque las features individuales se aprueben.
 
 ## Backlog aplazado (no entra en esta spec)
@@ -285,3 +302,28 @@ sí y ambas desbloqueadas (T5 depende de 4 ✅; T6 depende de 3 ✅). T7 sigue `
   vacuas. Restauración desde copia previa verificada con `md5sum -c` de 22 ficheros + `git status
   --porcelain` idéntico + 120/120 y lint re-ejecutados.
   Pendientes derivados (8, 9 y 10) en la sección de arriba.
+- **2026-08-03** — T1-T4 **commiteadas** en `557cb0f` (rama `feature/blender-assets`, NO a `main`).
+  Decisión de Sergio para atacar la causa raíz de la incidencia: el working tree deja de ser el
+  único soporte de la spec.
+- **2026-08-03** — Feature 5 (T5) **APPROVED**, 6/6 criterios. Informe en
+  `progress/impl_spec-03-F4-feature5.md`, veredicto en `progress/review_spec-03-F4-feature5.md`.
+  N2: `build` ✅ · `lint` ✅ · `test` **133/133** ✅ (baseline 120, +13) · `ng build
+  products-3d-playground` ✅, verificada de forma independiente por leader y reviewer.
+  Tocados: `badge-texture.ts` (`isRatioWithinTolerance`, guarda de dimensiones no medibles → VÁLIDO,
+  documentada en tres sitios), `badge.config.ts` (`assetAspect` derivado de `BADGE_FRONT_FACE` +
+  `assetAspectTolerance: 0.01`) y `badge-texture.component.ts` (warn dev DENTRO del effect que ya
+  resolvía la textura — siguen siendo 3 effects, no 4 — bajo `ngDevMode`, con URL + esperado +
+  medido, sin bloquear el render).
+  **El reviewer volvió a añadir una mutación que el informe no demostraba** (M-D: acoplar `baseMap`
+  al ratio) → 1 rojo exacto ⇒ «avisa y sigue» queda anclado por test, no solo por lectura.
+  Aceptado como menor no bloqueante: `map.image as {width?, height?}` (`:210`) es aserción sobre un
+  `any` de three en vez de `unknown` + narrow; no introduce `any`, lint pasa, el porqué está
+  comentado.
+  Pendientes derivados (11, 12 y 13) arriba.
+- **2026-08-03** — Feature 5 commiteada. Feature 6 (`badge-text-anchoring`, T6) marcada
+  `in_progress` y lanzada: `BadgeTextSlot` cambia de forma, anclaje abajo-derecha y escala
+  UNIFORME. Es la que devuelve los textos al cuadro (fuera de encuadre desde T3). Baseline para
+  esta feature: **133/133**.
+  **Decisión de Sergio (2026-08-03)**: T5 y T6 se ejecutan **encadenadas, no en paralelo** — tocan
+  los mismos tres ficheros (`badge-texture.ts`, `badge.config.ts`, `badge-texture.component.ts`) y
+  dos implementers a la vez ahí es el mismo modo de fallo que costó T1/T3 en la incidencia de T4.
