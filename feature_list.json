@@ -139,7 +139,7 @@
         "pnpm ng test ngx-products-3d muestra > 0 tests y todos verdes",
         "pnpm ng build products-3d-playground termina sin errores"
       ],
-      "status": "blocked"
+      "status": "in_progress"
     },
     {
       "id": 8,

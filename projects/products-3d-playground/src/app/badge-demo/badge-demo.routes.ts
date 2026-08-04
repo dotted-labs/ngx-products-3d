@@ -17,11 +17,14 @@ export const badgeDemoRoutes: Routes = [
 			provideProducts3dBadgeTheme({
 				bandTextureUrl: '/assets/band.jpg',
 				baseTextures: {
-					gold: '/assets/base-gold.png',
-					silver: '/assets/base-silver.png',
+					// badge_vitality.png: 800 × 1125 (ratio 32:45) con alfa.
+					gold: '/assets/badge_vitality.png',
+					// base-wrong-ratio.png: 256 × 256, fixture del aviso de ratio en dev.
+					silver: '/assets/base-wrong-ratio.png',
 				},
-				defaultBaseTextureUrl: '/assets/base-default.png',
+				defaultBaseTextureUrl: '/assets/badge_vitality.png',
 				fontUrl: '/assets/font.json',
+				baseColor: '#3b0764',
 			}),
 		],
 		component: BadgeDemoComponent,

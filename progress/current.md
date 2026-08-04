@@ -146,8 +146,38 @@ Salidos de `progress/review_spec-03-F4-feature6.md`:
 
 **F4 no es cerrable hasta que se ejecute la N3 de T7**, aunque las features individuales se aprueben.
 
+## ⚠️ PARA EL OJO DE SERGIO (N3 que ningún agente puede firmar)
+
+T7 verificó con Chrome real + GPU todo lo medible. Lo que queda **necesita ojos humanos** porque son
+fenómenos dinámicos, de un frame, o dependientes de su máquina. Lista accionable completa (qué mirar
+/ qué sería un fallo) en la sección homónima de `progress/review_spec-03-F4-feature7.md`. Resumen:
+
+1. **Destello al montar** — hueco de muestreo real 864→1996 ms; mirar si aparece algo raro en el
+   centro al cargar.
+2. **Correa blanca ~1 s** al montar (sin textura todavía).
+3. **Frame mal escalado** al pegar un nombre largo (el effect corre una vez con la geometría vieja).
+4. **Z-fighting con la tarjeta EN MOVIMIENTO** (en reposo está descartado). Si parpadea: **bajar el
+   `far`**, NO subir el gap.
+5. **GC / FPS** con dpr 2 en su máquina (el agente midió 165 fps headless a dpr 1).
+6. **URL rota** — cambiar `badge-demo.component.ts:16` a `/assets/no-existe.png`: correcto = frente
+   liso violeta; fallo = blanco o negro. **Revertir después.**
+7. **Doble tone mapping** — comparar el arte contra el PNG original (¿sale lavado?).
+8. **Canto y dorso** a mano (fuera de alcance, solo anotar qué se ve).
+9. **Legibilidad y tamaño de los textos** — ver decisión pendiente abajo.
+
+## Decisiones de producto abiertas (de la review de T7)
+
+- **Contraste texto/arte**: el texto sale **negro sobre violeta**, al límite de legibilidad
+  (confirmado por el leader mirando las capturas). **NO bloquea** T7: ningún criterio de la feature
+  ni de la spec habla de contraste. Ningún tema demo define `colors.text`. Decisión de diseño de
+  Sergio + nota de README en T8.
+
 ## Backlog aplazado (no entra en esta spec)
 
+- **P23 — `#` suelto con `memberNumber` vacío.** `badgeTextFor` (`badge-texture.ts:20-33`) no tiene
+  guarda para `memberNumber: ''` ⇒ el frente pinta el prefijo `#` solo. Es defecto **de la LIB**, no
+  de T7 (que no tocó ni un fichero de la lib, que es lo correcto). No entra en T8 (no es
+  documentación): backlog.
 - **P21 — `height` del texto depende de un detalle de soba.** La extrusión del `TextGeometry`
   funciona SOLO mientras `angular-three-soba` importe el de **three-stdlib** (que traduce
   `height`→`depth`); el de three 0.182 ya solo lee `depth`, con default **50**. Verificado por el
@@ -402,3 +432,28 @@ sí y ambas desbloqueadas (T5 depende de 4 ✅; T6 depende de 3 ✅). T7 sigue `
   Dos hallazgos del reviewer al backlog: **P21** (`height` depende de que soba siga usando el
   `TextGeometry` de three-stdlib) y **P22/H2** (mutante superviviente: ningún test distingue el
   `maxWidth` por slot del global). Pendientes derivados (14-20) arriba.
+- **2026-08-04** — Sergio aporta el asset: `badge_vitality.png`. Verificado por el leader leyendo la
+  cabecera PNG: **800×1125 = ratio 0.7111 (32:45 exacto), RGBA con 34.1% de píxeles totalmente
+  transparentes**. T7 **desbloqueada**.
+- **2026-08-04** — Feature 7 (T7) **APPROVED**, 9/9 criterios. Informe en
+  `progress/impl_spec-03-F4-feature7.md`, veredicto en `progress/review_spec-03-F4-feature7.md`.
+  Solo playground (`badge-demo.component.ts`, `badge-demo.routes.ts`); **cero ficheros de la lib
+  tocados**. N2: `build` ✅ · `lint` (lib y playground) ✅ · `test` **160/160** ✅ · `ng build
+  products-3d-playground` ✅.
+  **EL DEFECTO QUE ABRIÓ LA SPEC ESTÁ CERRADO**: el frente ya NO se deforma al redimensionar. El
+  reviewer lo remidió con un decodificador PNG **propio** (sin reutilizar los scripts del
+  implementer): 1280×900 vs 640×900 alineado por bbox = **219 px distintos y los 219 caen FUERA de
+  la tarjeta; dentro del arte, 0 píxeles**. El leader lo confirmó además a ojo en las capturas.
+  **Dos correcciones del reviewer al informe** (ninguna cambia el veredicto): (a) en 1800×700 la
+  desviación real es **0.36% centroide / 0.49% σU**, no el «<0.15%» reportado (el implementer
+  normalizaba a otro bbox); (b) los 10 frames idénticos prueban **estabilidad temporal, no ausencia
+  de z-fighting** — con cámara estática un z-fight no parpadea; lo que sostiene el punto es el zoom
+  ×6 (glifos sólidos, sin moteado).
+  **Norma nueva para futuras N3**: guardar el **log de consola**, no solo capturas. La parte «cero
+  warns en prod» no es reauditable sin él.
+  **Decisión sobre `violet` (cierra el pendiente 2, abierto desde T2)**: `baseColor: '#3b0764'`
+  explícito en vez de aceptar el negro ⇒ violet demuestra la rama sin `colors.clip` y ember la del
+  override. **Consecuencia a no perder**: el tipo `DemoTheme` obliga a `baseColor` en todo tema demo,
+  así que la demo ya **no enseña** el default negro; el pendiente 3 (CHANGELOG) queda como única
+  constancia.
+  Nuevos: **P23** al backlog, lista **«Para el ojo de Sergio»** arriba, y la decisión de contraste.
