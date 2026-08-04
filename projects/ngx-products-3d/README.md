@@ -18,6 +18,11 @@ tier + nombre/número/tier del socio en Text3D) y todo el aspecto se controla po
 > Ver § [Contrato del modelo GLB](#contrato-del-modelo-glb) y el
 > [CHANGELOG](https://github.com/dotted-labs/ngx-products-3d/blob/main/CHANGELOG.md) para la
 > migración y para el resto de cambios incompatibles.
+>
+> **0.3.0 también cambia el contrato del arte del frente**: la cara frontal se rellena con una
+> imagen de ratio **32:45 con canal alfa**, no con una imagen cuadrada. Un asset pensado para 0.2.x
+> se sigue cargando y renderizando, pero sale **estirado** y la lib avisa por consola en dev. Ver
+> § [Contrato del asset frontal](#contrato-del-asset-frontal).
 
 ## Instalación
 
@@ -78,12 +83,15 @@ export const membershipRoutes: Routes = [
 			provideProducts3d({ cardModelUrl: '/assets/3d/membresia.glb' }),
 			provideProducts3dBadgeTheme({
 				bandTextureUrl: '/assets/3d/band.jpg',
+				// Arte del frente por tier: ratio 32:45 con alfa (§ Contrato del asset frontal)
 				baseTextures: {
-					gold: '/assets/3d/base-gold.png',
-					silver: '/assets/3d/base-silver.png',
+					gold: '/assets/3d/front-gold.webp',
+					silver: '/assets/3d/front-silver.webp',
 				},
-				defaultBaseTextureUrl: '/assets/3d/base-default.png',
+				defaultBaseTextureUrl: '/assets/3d/front-default.webp',
 				fontUrl: '/assets/3d/font.json',
+				// Color del modelo: se ve por las zonas transparentes del arte y tiñe clip/clamp
+				baseColor: '#3b0764',
 				colors: {
 					band: '#ffe3c2',
 					clip: '#b45309',
@@ -178,7 +186,7 @@ físico + escena del badge.
 
 | Campo | Tipo | Descripción |
 | --- | --- | --- |
-| `name` | `string` | Nombre completo mostrado en la tarjeta (texto principal; los nombres largos se escalan para no desbordar) |
+| `name` | `string` | Nombre completo mostrado en la tarjeta (texto principal; los nombres largos se reducen con escala **uniforme** para no desbordar, nunca comprimidos en un solo eje) |
 | `memberNumber` | `string` | Número de socio (se pinta con prefijo `#`) |
 | `tier` | `string` | Tier de membresía. Clave abierta: selecciona la textura base en `theme.baseTextures`; se pinta en mayúsculas como etiqueta |
 
@@ -187,14 +195,29 @@ físico + escena del badge.
 | Campo | Tipo | Requerido | Default | Para qué sirve |
 | --- | --- | --- | --- | --- |
 | `bandTextureUrl` | `string` | sí | — | Textura de la correa (lanyard). La lib aplica `RepeatWrapping` y la tesela ~3.4 veces a lo largo (`BADGE_BAND.repeat`, calibrado para un arte tileable en X de proporción 4:1). Si la carga falla: color plano + warn en dev |
-| `baseTextures` | `Record<string, string>` | sí | — | Textura base del frente de la tarjeta por tier (key = `BadgeMemberData.tier`) |
-| `defaultBaseTextureUrl` | `string` | sí (**validado en runtime**) | — | Fallback obligatorio cuando el tier del socio no existe en `baseTextures` |
+| `baseTextures` | `Record<string, string>` | sí (puede ir `{}`) | — | Arte del frente de la tarjeta por tier (key = `BadgeMemberData.tier`). **`{}` es válido**: con el mapa vacío todos los tiers caen en `defaultBaseTextureUrl`. Contrato del fichero: § [Contrato del asset frontal](#contrato-del-asset-frontal) |
+| `defaultBaseTextureUrl` | `string` | sí (**validado en runtime**) | — | Fallback obligatorio cuando el tier del socio no existe en `baseTextures`. Es el único campo de arte del frente realmente obligatorio |
 | `fontUrl` | `string` | sí (**validado en runtime**) | — | Typeface JSON de three para los textos 3D del frente |
+| `baseColor` | `string` | no | `'#000000'` (`BADGE_BASE_COLOR`) | Color base del modelo. Ver el reparto abajo: **no** llega igual a todas las piezas |
 | `colors` | `object` | no | `{}` | Tintes opcionales |
 | `colors.band` | `string` | no | `'white'` | Tinte de la correa (se multiplica con la textura) |
-| `colors.text` | `string` | no | `'black'` | Color de los textos del socio |
-| `colors.clip` | `string` | no | sin tinte | Tinte del metal del clip/clamp. La lib CLONA el material del GLB antes de teñir (el original nunca se muta) |
+| `colors.text` | `string` | no | `'black'` | Color de los textos del socio. **Elígelo según tu arte**: el default negro sobre un frente oscuro queda al límite de legibilidad, y la lib no calcula contraste |
+| `colors.clip` | `string` | no | `baseColor` | Tinte del metal del clip/clamp; override específico que gana al `baseColor` global. La lib CLONA el material del GLB antes de teñir (el original nunca se muta) |
 | `material` | `Partial<BadgePhysicalMaterialOptions>` | no | defaults de la lib | Override parcial del `MeshPhysicalMaterial` de la tarjeta; se mergea campo a campo con los defaults |
+
+#### `baseColor`: dónde acaba cada parte del color
+
+`baseColor` es "el color del modelo", pero no se aplica igual en las tres piezas:
+
+| Pieza | Cómo lo usa | Override |
+| --- | --- | --- |
+| **Frente de la tarjeta** | Pinta el quad de fondo **opaco** de la escena que se renderiza a textura, detrás del arte del tier: es lo que se ve por las zonas **transparentes** del asset | — (no hay campo específico) |
+| **clip y clamp** | Tinte del material `metal` del GLB, resuelto como `colors.clip ?? baseColor ?? '#000000'` | `colors.clip` |
+| **Canto y dorso de la tarjeta** | **Fuera de alcance**: comparten material y `map` con el frente, así que muestran lo que caiga en sus UV. `baseColor` no los controla | — |
+
+> `baseColor` **no** es el `color` del `MeshPhysicalMaterial` de la tarjeta, y no puede serlo: three
+> multiplica `map × color` en el shader y el `map` es la textura del frente, así que un color oscuro
+> ahí pintaría toda la tarjeta de negro. Por eso entra por la escena de la textura.
 
 Defaults del material de la tarjeta (`BadgePhysicalMaterialOptions`, exportados como
 `BADGE_MATERIAL_DEFAULTS`):
@@ -212,7 +235,9 @@ Defaults del material de la tarjeta (`BadgePhysicalMaterialOptions`, exportados 
 falta (o tiene vacío) `defaultBaseTextureUrl` o `fontUrl`, la lib lanza un
 `Error('[ngx-products-3d] badge: …')` accionable en el primer ciclo de CD — nunca falla en
 silencio ni a mitad de render. El resto de fallos de carga (textura 404, GLB roto) degradan con
-un `console.warn` solo-dev: correa en color plano, escena sin tarjeta o frente sin fondo.
+un `console.warn` solo-dev: correa en color plano, escena sin tarjeta, o frente sin arte (liso del
+color base). Un asset frontal con el ratio equivocado también avisa y **sigue renderizando**
+(§ [Contrato del asset frontal](#contrato-del-asset-frontal)).
 
 ### `provideProducts3d(config)` — `Products3dConfig`
 
@@ -228,12 +253,105 @@ proveerlos a mano.
 La lib **no empaqueta ningún asset**; los del playground del repo son solo demo. La app
 consumidora aporta los suyos:
 
-- **Texturas** (`bandTextureUrl`, `baseTextures`, `defaultBaseTextureUrl`): cualquier formato de
-  imagen que cargue `TextureLoader` de three (PNG, JPG, WebP…). Para el frente se recomienda una
-  imagen cuadrada (la RenderTexture interna es 2000×2000) con espacio libre donde caen los textos.
+- **Correa** (`bandTextureUrl`): cualquier formato que cargue `TextureLoader` de three (PNG, JPG,
+  WebP…). Arte tileable en X de proporción ~4:1 (la lib lo tesela ~3.4 veces a lo largo).
+- **Arte del frente** (`baseTextures`, `defaultBaseTextureUrl`): tiene contrato propio, § siguiente.
 - **Fuente** (`fontUrl`): typeface **JSON** de three (formato de `FontLoader`), NO `.ttf`/`.woff`.
   Convierte tu fuente con [facetype.js](https://gero3.github.io/facetype.js/).
-- **Modelo** (`cardModelUrl`): GLB que cumpla el contrato siguiente.
+- **Modelo** (`cardModelUrl`): GLB que cumpla el contrato de § Contrato del modelo GLB.
+
+## Contrato del asset frontal
+
+El arte que apunta `defaultBaseTextureUrl` (y cada entrada de `baseTextures`) **cubre la cara
+frontal entera** de la tarjeta. La lib lo pinta sobre un quad opaco del `baseColor` del tema, así
+que las zonas transparentes del arte revelan ese color: **no hace falta recortar la silueta de la
+tarjeta a mano**.
+
+| Propiedad | Requisito |
+| --- | --- |
+| **Ratio** | **32:45 exacto** (= 1.6 : 2.25 ≈ 0.7111), el de la cara frontal del GLB. Es el único requisito geométrico |
+| **Tamaño en píxeles** | **Libre**. 1600 × 2250 px es solo la *densidad de referencia* (1000 px por unidad de mundo); 1024 × 1440 o 800 × 1125 valen igual mientras el ratio se mantenga |
+| **Canal alfa** | **Obligatorio si quieres que se vea el `baseColor`**. Sin alfa el arte tapa el fondo por completo (sigue siendo válido, solo que el `baseColor` no asoma por el frente) |
+| **Formato** | **No es un requisito**: cualquiera que cargue `TextureLoader` de three y soporte alfa (WebP y PNG son los habituales). Lo que importa es **alfa + ratio**, no la extensión |
+| **Espacio de color** | **sRGB**. La lib marca la textura como `SRGBColorSpace` al resolverla; exporta el asset en sRGB, no en Display P3 ni en lineal |
+| **Orientación** | **El borde superior de la imagen es el borde superior de la tarjeta**: tal como se ve en tu visor de imágenes, así se ve en la card. La lib ya concilia las dos convenciones de V que se cruzan aquí (UV de glTF vs. textura de un render target) |
+| **Márgenes** | Ninguno añadido por la lib: la imagen se mapea borde a borde sobre la cara. Deja tú el aire que necesites, y hueco abajo-derecha para el nombre, el número y el tier |
+
+**Ratio equivocado: la lib avisa, no rompe.** Si el ratio del asset se desvía más de un **1%** del
+32:45, la lib emite **un** `console.warn` con prefijo `[ngx-products-3d]`, la URL, el ratio esperado
+y el medido — y **sigue renderizando** el frente (estirado en esa misma proporción: el arreglo está
+en el asset, no en el código). El aviso es **solo de desarrollo** (`ngDevMode`): en un build de
+producción no se emite. No se lanza ninguna excepción y no hay modo de "fallar duro" por ratio.
+
+Otros dos comportamientos degradados, por si los ves:
+
+- **URL que no carga** (404, CORS…): el frente se renderiza **liso del color base** con los textos
+  encima, más un aviso dev. Nunca escena en blanco.
+- **Canto y dorso de la tarjeta**: comparten material y `map` con el frente, así que muestran lo
+  que caiga en sus UV. Fuera del alcance de este contrato — el asset solo describe la cara frontal.
+
+## Textos del socio: `BADGE_TEXT_LAYOUT`
+
+Dónde caen `name`, `memberNumber` y `tier` sobre el frente lo decide `BADGE_TEXT_LAYOUT`, un array
+de `BadgeTextSlot` exportado por la lib. Por defecto van **abajo-derecha**, alineados a la derecha,
+con el tier justo encima:
+
+```ts
+export interface BadgeTextSlot {
+	field: 'name' | 'memberNumber' | 'tier';
+	/** Anclaje normalizado (0-1) sobre la cara. Origen ABAJO-IZQUIERDA. Ver la trampa de la V */
+	anchor: [number, number];
+	/** Borde del texto que se pega al anchor: 'right' = el texto crece hacia la izquierda */
+	align: BadgeTextAlign; // 'left' | 'right' | 'center'
+	/** Tamaño de la fuente, en unidades de mundo (la cara mide 1.6 × 2.25) */
+	size: number;
+	/** Profundidad de extrusión del TextGeometry */
+	height: number;
+	/** Ancho máximo antes de reducir el texto con escala UNIFORME */
+	maxWidth: number;
+}
+
+// Valores por defecto de la lib
+export const BADGE_TEXT_LAYOUT: BadgeTextSlot[] = [
+	{ field: 'name', anchor: [0.92, 0.16], align: 'right', size: 0.09, height: 0.01, maxWidth: 0.65 },
+	{
+		field: 'memberNumber',
+		anchor: [0.92, 0.08],
+		align: 'right',
+		size: 0.06,
+		height: 0.01,
+		maxWidth: 0.4,
+	},
+	{ field: 'tier', anchor: [0.92, 0.24], align: 'right', size: 0.05, height: 0.01, maxWidth: 0.4 },
+];
+```
+
+> ### ⚠️ La trampa de la V
+>
+> **`anchor[1] = 0` es el borde INFERIOR de la tarjeta y `1` el superior.** Es **al revés** que los
+> UV del GLB, donde `v = 0` es el borde **superior** (convención glTF: `v = (1.125 − y) / 2.25`).
+>
+> El motivo es que el `anchor` se expresa sobre lo que encuadra la cámara de la escena de textura
+> —con +Y hacia arriba, como cualquier escena de three—, y quien concilia ambas convenciones al
+> pegar esa textura sobre la cara es la inversión de V del `map`
+> (`BADGE_TEXTURE.mapRepeat` / `mapOffset`), no el layout. Si copias un UV del GLB como `anchor`,
+> el texto sale **reflejado en vertical** respecto al arte.
+
+Detalles del encaje:
+
+- **Nunca hay escalado no uniforme.** Un texto más ancho que su `maxWidth` se reduce con escala
+  **uniforme** (`scale.x === scale.y === scale.z`); jamás se comprime solo en X. Un texto corto no
+  se agranda.
+- **El alineado lo resuelve la lib**, no `NgtsText3D`: el `TextGeometry` no tiene alineado y su
+  origen queda en el borde izquierdo de la línea base, así que la lib mide el bounding box **ya
+  escalado** y desplaza el mesh en X.
+- **La z no está en el slot**: es común a los tres textos y vive en `BADGE_TEXTURE.textLayerZ`
+  (capa por delante del arte, que a su vez va por delante del quad de `baseColor`).
+- **El color de los tres textos es `theme.colors.text`** (default negro). La lib no calcula
+  contraste contra el arte: **elígelo según tu arte**, o un texto oscuro sobre un frente oscuro
+  quedará al límite de la legibilidad.
+- `BADGE_TEXT_LAYOUT` es una constante **de referencia**: describe dónde caen los textos y sirve de
+  base si compones tu propia escena. La lib la lee de su propia config, no del tema.
 
 ## Contrato del modelo GLB
 
@@ -339,17 +457,24 @@ export class CustomBadgeCanvasComponent {
 
 	protected readonly theme: Products3dBadgeTheme = {
 		bandTextureUrl: '/assets/3d/band.jpg',
-		baseTextures: { gold: '/assets/3d/base-gold.png' },
-		defaultBaseTextureUrl: '/assets/3d/base-default.png',
+		// baseTextures puede ir {}: todos los tiers caerían en defaultBaseTextureUrl
+		baseTextures: { gold: '/assets/3d/front-gold.webp' },
+		defaultBaseTextureUrl: '/assets/3d/front-default.webp',
 		fontUrl: '/assets/3d/font.json',
+		baseColor: '#3b0764',
 	};
 }
 ```
 
 Las constantes de configuración del badge (`BADGE_CAMERA`, `BADGE_PHYSICS`, `BADGE_LIGHTING`,
-`BADGE_MATERIAL_DEFAULTS`, …) son parte de la API pública y sirven como valores de referencia
-para composiciones propias. También se exporta `Products3dBadgeTexture` (la escena del frente que
-se renderiza a textura), pensada para uso interno/avanzado dentro de un `NgtsRenderTexture`.
+`BADGE_MATERIAL_DEFAULTS`, `BADGE_BASE_COLOR`, `BADGE_FRONT_FACE`, `BADGE_TEXTURE`,
+`BADGE_TEXT_LAYOUT`, …) son parte de la API pública y sirven como valores de referencia
+para composiciones propias. Las del frente están todas derivadas del mismo rect: `BADGE_FRONT_FACE`
+(la cara de la tarjeta, 1.6 × 2.25) manda sobre el FBO (`BADGE_TEXTURE.width`/`height`), el frustum
+de su cámara ortográfica (`cameraFrustum`), los quads del fondo (`frontPlaneSize`) y el ratio que
+se le exige al asset (`assetAspect`). También se exporta `Products3dBadgeTexture` (la escena del
+frente que se renderiza a textura), pensada para uso interno/avanzado dentro de un
+`NgtsRenderTexture`.
 
 ## Licencia
 

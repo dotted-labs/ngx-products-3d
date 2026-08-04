@@ -294,9 +294,12 @@ export type BadgeTextAlign = 'left' | 'right' | 'center';
 
 /**
  * Un slot de texto del frente de la tarjeta (escena de textura, spec-03-F4v2 R3).
- * Tuplas mutables a propósito: los inputs de soba (`NgtsText3D.options`) no admiten
- * `readonly` (mismo criterio que `BadgeLightformerOptions`). Exportado para que los
- * `.d.ts` de la lib puedan nombrar el tipo de `BADGE_TEXT_LAYOUT` (evita TS4029).
+ *
+ * `anchor` es una tupla MUTABLE porque `BADGE_TEXT_LAYOUT` es un array de datos y no una config
+ * congelada con `as const`; ya no lo exige ningún input de soba: a `NgtsText3D.options` solo llegan
+ * `size` y `height` (números), y del `anchor` se encarga `uvAnchorToRtPosition`, cuya firma acepta
+ * `readonly [number, number]`. Exportado para que los `.d.ts` de la lib puedan nombrar el tipo de
+ * `BADGE_TEXT_LAYOUT` (evita TS4029).
  */
 export interface BadgeTextSlot {
 	field: BadgeTextField;

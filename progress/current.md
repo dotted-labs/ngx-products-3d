@@ -174,6 +174,10 @@ fenómenos dinámicos, de un frame, o dependientes de su máquina. Lista acciona
 
 ## Backlog aplazado (no entra en esta spec)
 
+- **P24 — mensaje de consola obsoleto.** `badge-texture.component.ts:243` dice «El frente se renderiza
+  sin fondo», redacción anterior a T4: ahora SÍ hay un quad opaco de `baseColor` detrás. El README
+  dice lo correcto («liso del color base», `:288-289`), así que la documentación no miente; el
+  impreciso es el mensaje. Arreglarlo dentro de T8 habría sido ampliación de alcance.
 - **P23 — `#` suelto con `memberNumber` vacío.** `badgeTextFor` (`badge-texture.ts:20-33`) no tiene
   guarda para `memberNumber: ''` ⇒ el frente pinta el prefijo `#` solo. Es defecto **de la LIB**, no
   de T7 (que no tocó ni un fichero de la lib, que es lo correcto). No entra en T8 (no es
@@ -457,3 +461,35 @@ sí y ambas desbloqueadas (T5 depende de 4 ✅; T6 depende de 3 ✅). T7 sigue `
   así que la demo ya **no enseña** el default negro; el pendiente 3 (CHANGELOG) queda como única
   constancia.
   Nuevos: **P23** al backlog, lista **«Para el ojo de Sergio»** arriba, y la decisión de contraste.
+- **2026-08-04** — Feature 8 (T8) **APPROVED**, 7/7 criterios. **ÚLTIMA de la spec.** Informe en
+  `progress/impl_spec-03-F4-feature8.md`, veredicto en `progress/review_spec-03-F4-feature8.md`.
+  Tocados: `README.md` publicado (contrato del asset frontal, `baseColor` con su reparto,
+  `BADGE_TEXT_LAYOUT` + «la trampa de la V», `baseTextures: {}` válido, nota de `colors.text`),
+  `CHANGELOG.md` (entrada **0.3.0 AMPLIADA, sin 0.4.0**) y `badge.config.ts` **solo JSDoc** (P20/H1).
+  N2: `build` ✅ · `lint` ✅ · `test` **160/160** ✅ · `ng build products-3d-playground` ✅ ·
+  README del `dist` **idéntico** al fuente · `package.json` intacto en 0.3.0.
+  **Verificación de exactitud del reviewer** (el riesgo de una feature de docs es publicar algo
+  falso): reconstruyó el delta de superficie pública **0.2.1 → HEAD** (`git show v0.2.1:…` contra el
+  `.d.ts` del dist) y confirmó que **todo lo retirado está en un Breaking y todo lo añadido está en
+  Añadido**, sin sobrantes ni faltantes; los internos tienen 0 declaraciones en el `.d.ts`. Cero hits
+  de API muerta en el README. **Sin sobre-afirmación**: cero menciones a tone mapping, z-fighting o
+  destello en el CHANGELOG (lo que sigue pendiente de ojo humano NO se declara verificado).
+  La trampa de la V verificada en el sentido CORRECTO: README `:329-338` dice borde **inferior**, y
+  `uvAnchorToRtPosition` (`badge-texture.ts:63-68`) devuelve `y = (v − 0.5) · face.height` ⇒ `v = 0`
+  → `−halfHeight`. Coinciden.
+  Nuevo backlog **P24**.
+
+## Estado de cierre de la spec (dictamen del reviewer de T8)
+
+- **Criterios sin cumplir en las features 1-8**: **ninguno**. Los ocho veredictos son APPROVED
+  (6/6, 6/6, 8/8, 7/7, 6/6, 8/8, 9/9, 7/7), sin una sola marca `[ ]`.
+- **Pendientes de esta sección sin destino**: **ninguno**. Los 20 están colocados — 1/8/9/11/14/15/16
+  ejecutados en la N3 de T7 (con residuo en «Para el ojo de Sergio»), 2 cerrado por T7,
+  3/7/10/12/17/18/19/20 cerrados por T8 y verificados uno a uno, 4/6 higiene fuera de spec, 5
+  absorbido por T4, 13 norma ya escrita. P21-P24 y H3 quedan en backlog.
+- **Bloqueos para mergear a `main`**, aparte de la N3 de Sergio: **la contabilidad de
+  `feature_list.json`** — las features **4-8 siguen en `in_progress`** pese a estar aprobadas y
+  commiteadas (solo 1-3 están `done`). El leader NO las marca por la regla dura de `CLAUDE.md`
+  («no marques features como done»): **pendiente de que lo haga Sergio o de que autorice al leader**.
+- **Spec archivable**: **todavía no**. Falta (a) marcar 4-8 `done` y (b) la firma visual de Sergio.
+  Ninguna de las dos toca `src/`.
