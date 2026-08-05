@@ -5,6 +5,8 @@ import {
 	CUSTOM_ELEMENTS_SCHEMA,
 	effect,
 	input,
+	resource,
+	type Signal,
 	untracked,
 	viewChildren,
 } from '@angular/core';
@@ -15,9 +17,10 @@ import {
 	NgtsOrthographicCamera,
 	type NgtsOrthographicCameraOptions,
 } from 'angular-three-soba/cameras';
-import { textureResource } from 'angular-three-soba/loaders';
+import { textureResource, type NgtsFontInput } from 'angular-three-soba/loaders';
 import { resourceValueOrUndefined } from '../resource-value';
 import type { BadgeMemberData, Products3dBadgeTheme } from '../types';
+import { isOpentypeFontUrl, loadOpentypeFontData } from './badge-font';
 import { resolveBaseColor } from './badge-theme';
 import {
 	alignOffsetX,
@@ -84,15 +87,23 @@ import { BADGE_FRONT_FACE, BADGE_TEXT, BADGE_TEXT_LAYOUT, BADGE_TEXTURE } from '
 			Textos del socio, data-driven: un <ngts-text-3d> por slot de BADGE_TEXT_LAYOUT
 			(reordenar/ajustar el array no toca este componente). Material basic (unlit) a
 			propósito: la escena del RenderTexture no tiene luces y un material lit pintaría
-			negro; el texto es gráfico plano sobre la tarjeta, no necesita sombreado. Mientras
-			la fuente (theme.fontUrl) carga, NgtsText3D no crea geometría (mesh vacío, invisible).
+			negro; el texto es gráfico plano sobre la tarjeta, no necesita sombreado.
 			El anclaje (anchor + align) y la reducción a maxWidth NO son bindings: necesitan el
 			ancho medido de la geometría y los aplica fitTextMeshes sobre el mesh.
+
+			Gate sobre resolvedFont(): con un typeface JSON es la URL misma (verdadera desde el
+			primer CD, comportamiento idéntico al de siempre), pero con una fuente binaria es el
+			typeface ya convertido, que no existe mientras se descarga y NUNCA si falla. Sin el
+			gate habría que pasarle a NgtsText3D una fuente ausente: su fontResource haría
+			value() sobre un recurso en error y eso LANZA (ResourceValueError) en plena detección
+			de cambios. Así el modo degradado es "frente sin texto", nunca una excepción.
 		-->
-		@for (entry of textSlots(); track entry.slot.field) {
-			<ngts-text-3d [font]="theme().fontUrl" [text]="entry.text" [options]="entry.options">
-				<ngt-mesh-basic-material [color]="textColor()" />
-			</ngts-text-3d>
+		@if (resolvedFont(); as font) {
+			@for (entry of textSlots(); track entry.slot.field) {
+				<ngts-text-3d [font]="font" [text]="entry.text" [options]="entry.options">
+					<ngt-mesh-basic-material [color]="textColor()" />
+				</ngts-text-3d>
+			}
 		}
 	`,
 	imports: [NgtArgs, NgtsOrthographicCamera, NgtsText3D],
@@ -175,6 +186,44 @@ export class Products3dBadgeTexture {
 	protected readonly textColor = computed(() => this.theme().colors?.text ?? BADGE_TEXT.color);
 
 	/**
+	 * URL de la fuente del tema SOLO si es binaria (`.otf`/`.ttf`); `undefined` para un typeface
+	 * JSON. Ese `undefined` deja el recurso de abajo en estado `idle` sin ejecutar el loader
+	 * (`@angular/core`, `_resource-chunk.mjs:209`), que es lo que hace que el camino de siempre no
+	 * pague ni el `import()` del TTFLoader ni una petición extra.
+	 */
+	private readonly opentypeFontUrl = computed(() => {
+		const url = this.theme().fontUrl;
+		return isOpentypeFontUrl(url) ? url : undefined;
+	});
+
+	/**
+	 * Conversión de la fuente binaria a typeface JSON. La caché por URL (con referencia estable)
+	 * vive en `badge-font.ts`; aquí solo se le da ciclo de vida de Angular: cancelación al destruir
+	 * el componente y `status()`/`hasValue()` reactivos para el gate del template y el warn dev.
+	 */
+	private readonly opentypeFont = resource({
+		params: this.opentypeFontUrl,
+		loader: ({ params }) => loadOpentypeFontData(params),
+	});
+
+	/**
+	 * Fuente que recibe `NgtsText3D`, con autodetección por extensión de `theme.fontUrl`:
+	 * - typeface JSON → **la URL string tal cual** (passthrough). Soba la fetchea y la cachea como
+	 *   hasta ahora; la lib no se mete en medio ni le quita su caché.
+	 * - `.otf`/`.ttf` → el typeface ya convertido, o `undefined` mientras carga y si falla.
+	 *
+	 * `undefined` no es un fallo del tema: es "todavía no" o "no se pudo", y el template lo traduce
+	 * a frente sin texto (el `[font]` es `input.required`, así que no hay valor neutro que pasarle).
+	 */
+	protected readonly resolvedFont: Signal<NgtsFontInput | undefined> = computed(() => {
+		const url = this.theme().fontUrl;
+		if (!isOpentypeFontUrl(url)) {
+			return url;
+		}
+		return resourceValueOrUndefined(this.opentypeFont);
+	});
+
+	/**
 	 * Slots de texto listos para el template: layout de config + texto formateado del socio
 	 * (fn pura badgeTextFor) + options de NgtsText3D. Reactivo solo a member().
 	 *
@@ -241,6 +290,21 @@ export class Products3dBadgeTexture {
 			if (ngDevMode) {
 				console.warn(
 					`[ngx-products-3d] badge: no se pudo cargar la textura base del frente (tier '${this.member().tier}'): ${this.baseTextureUrl()}. El frente se renderiza sin fondo.`,
+				);
+			}
+		});
+
+		// Aviso dev cuando la fuente binaria no se descarga o no parsea. El fallback visual ya lo
+		// aplica el gate de resolvedFont() (los <ngts-text-3d> no se montan): el frente queda con su
+		// color base y su arte, sin textos. El camino de typeface JSON NO pasa por aquí: lo carga
+		// soba con su propio recurso y su propia caché (passthrough), y su error es suyo.
+		effect(() => {
+			if (this.opentypeFont.status() !== 'error') {
+				return;
+			}
+			if (ngDevMode) {
+				console.warn(
+					`[ngx-products-3d] badge: no se pudo cargar la fuente ${this.opentypeFontUrl()}: ${this.opentypeFont.error()?.message}. El frente se renderiza sin texto.`,
 				);
 			}
 		});

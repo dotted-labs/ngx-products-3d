@@ -86,6 +86,25 @@ vi.mock('angular-three-soba/loaders', () => ({
 	},
 }));
 
+// Doble del TTFLoader de three, que el componente pide por import() DINÁMICO al resolver una fuente
+// binaria: el módulo real arrastra el `opentype` embebido (~467 KB) y su loadAsync haría una
+// petición HTTP real, imposible en jsdom. `failures` marca una URL como rota para el degradado.
+const ttfLoaderMock = vi.hoisted(() => ({
+	loaded: [] as string[],
+	failures: new Set<string>(),
+}));
+vi.mock('three/addons/loaders/TTFLoader.js', () => ({
+	TTFLoader: class {
+		async loadAsync(url: string): Promise<unknown> {
+			ttfLoaderMock.loaded.push(url);
+			if (ttfLoaderMock.failures.has(url)) {
+				throw new Error(`fetch for "${url}" responded with 404: Not Found`);
+			}
+			return { familyName: 'Ballega', resolution: 1000, glyphs: {} };
+		}
+	},
+}));
+
 /**
  * Mínimo de `Texture` de three que toca el effect de la textura base: el `image` del que se leen las
  * dimensiones del asset más las dos propiedades que el effect muta (`colorSpace`, `needsUpdate`).
@@ -118,6 +137,7 @@ interface TextureInternals {
 	baseColor: () => string;
 	baseMap: () => unknown;
 	baseTextureUrl: () => string;
+	resolvedFont: () => unknown;
 	textColor: () => string;
 	textSlots: () => {
 		slot: BadgeTextSlot;
@@ -140,14 +160,16 @@ const THEME: Products3dBadgeTheme = {
 	fontUrl: 'assets/font.json',
 };
 
-function createTextureScene(): ComponentFixture<Products3dBadgeTexture> {
+function createTextureScene(
+	theme: Products3dBadgeTheme = THEME,
+): ComponentFixture<Products3dBadgeTexture> {
 	TestBed.configureTestingModule({});
 	// Template vacío: se testea la derivación de estado desde badge.config, no el render 3D
 	// (requiere canvas + WebGL reales; lo visual es Nivel 3, ver docs/verification.md).
 	TestBed.overrideComponent(Products3dBadgeTexture, { set: { template: '' } });
 	const fixture = TestBed.createComponent(Products3dBadgeTexture);
 	fixture.componentRef.setInput('member', MEMBER);
-	fixture.componentRef.setInput('theme', THEME);
+	fixture.componentRef.setInput('theme', theme);
 	return fixture;
 }
 
@@ -332,6 +354,121 @@ describe('Products3dBadgeTexture front asset ratio', () => {
 		const { warn } = mountWithTexture(resolvedTexture(0, 0));
 
 		expect(warn).not.toHaveBeenCalled();
+	});
+});
+
+describe('Products3dBadgeTexture font', () => {
+	afterEach(() => {
+		ttfLoaderMock.loaded = [];
+		ttfLoaderMock.failures.clear();
+		vi.restoreAllMocks();
+	});
+
+	/** Tema del test con otra fuente. Cada caso usa su propia URL: la caché de typefaces es por URL. */
+	function themeWithFont(fontUrl: string): Products3dBadgeTheme {
+		return { ...THEME, fontUrl };
+	}
+
+	it('passes a typeface JSON url straight through to soba, untouched', () => {
+		const internals = internalsOf(createTextureScene(themeWithFont('assets/font.json')));
+
+		// La URL llega a NgtsText3D tal cual y SIN esperar a nada (misma detección de cambios), que
+		// es lo que deja intacto el camino de siempre: la carga y la caché siguen siendo de soba.
+		expect(internals.resolvedFont()).toBe('assets/font.json');
+		expect(typeof internals.resolvedFont()).toBe('string');
+		// Y no se toca el TTFLoader: quien usa typeface JSON no paga el import() dinámico.
+		expect(ttfLoaderMock.loaded).toEqual([]);
+	});
+
+	it('resolves an .otf font to the parsed typeface data, not to the url', async () => {
+		const fixture = createTextureScene(themeWithFont('assets/Ballega.otf'));
+		fixture.detectChanges();
+
+		// Mientras convierte no hay fuente: el gate del template deja el frente SIN TEXTO...
+		expect(internalsOf(fixture).resolvedFont()).toBeUndefined();
+
+		await fixture.whenStable();
+
+		// ...y al resolver llega el typeface JSON como OBJETO (NgtsText3D lo acepta sin transform;
+		// una url .otf reventaría en el loadFontData de soba, que hace response.json()).
+		expect(internalsOf(fixture).resolvedFont()).toMatchObject({ familyName: 'Ballega' });
+		expect(ttfLoaderMock.loaded).toEqual(['assets/Ballega.otf']);
+	});
+
+	it('keeps the same font reference when the theme object changes but the url does not', async () => {
+		const fixture = createTextureScene(themeWithFont('assets/Stable.otf'));
+		fixture.detectChanges();
+		await fixture.whenStable();
+		const internals = internalsOf(fixture);
+		const first = internals.resolvedFont();
+		expect(first).toMatchObject({ familyName: 'Ballega' });
+
+		// Caso REAL del playground: el color picker produce un tema NUEVO en cada tick, con la misma
+		// fontUrl. Eso reevalúa la cadena entera de computed.
+		fixture.componentRef.setInput('theme', {
+			...themeWithFont('assets/Stable.otf'),
+			colors: { text: '#ff0000' },
+		});
+		fixture.detectChanges();
+		await fixture.whenStable();
+
+		// La caché de fontResource de soba está keyed por IDENTIDAD del parámetro: un objeto nuevo
+		// aquí la haría re-parsear la fuente entera en cada tick del picker.
+		expect(internals.resolvedFont()).toBe(first);
+		expect(internals.textColor()).toBe('#ff0000');
+		expect(ttfLoaderMock.loaded).toEqual(['assets/Stable.otf']);
+	});
+
+	it('accepts a .ttf as well, with the same conversion path', async () => {
+		const fixture = createTextureScene(themeWithFont('assets/Ballega.ttf'));
+		fixture.detectChanges();
+		await fixture.whenStable();
+
+		expect(internalsOf(fixture).resolvedFont()).toMatchObject({ familyName: 'Ballega' });
+		expect(ttfLoaderMock.loaded).toEqual(['assets/Ballega.ttf']);
+	});
+
+	it('degrades to a front WITHOUT TEXT (warning in dev) when the font fails, never throwing', async () => {
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+		ttfLoaderMock.failures.add('assets/Broken.otf');
+
+		const fixture = createTextureScene(themeWithFont('assets/Broken.otf'));
+		fixture.detectChanges();
+		await fixture.whenStable();
+		const internals = internalsOf(fixture);
+
+		// Sin fuente resuelta no se montan los <ngts-text-3d>: si se les pasara la fuente ausente,
+		// el value() del recurso de soba LANZARÍA en plena detección de cambios.
+		expect(internals.resolvedFont()).toBeUndefined();
+		// El resto del frente sigue en pie: color base y arte del tier.
+		expect(internals.baseColor()).toBe(BADGE_BASE_COLOR);
+
+		const fontWarnings = warn.mock.calls
+			.map((call) => String(call[0]))
+			.filter((message) => message.includes('assets/Broken.otf'));
+		expect(fontWarnings).toHaveLength(1);
+		expect(fontWarnings[0]).toContain('[ngx-products-3d]');
+		expect(fontWarnings[0]).toContain('sin texto');
+		// Y lleva la causa: sin ella el aviso solo diría que algo falló, que es justo lo que un dev
+		// no puede accionar. Ata además el warn al estado de ERROR (en loading no hay causa).
+		expect(fontWarnings[0]).toContain('404');
+	});
+
+	it('does not warn about the font when the theme uses a typeface JSON', async () => {
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+		// Trampa deliberada: si el typeface JSON acabara pasando por el conversor binario, el doble
+		// del TTFLoader fallaría y el warn del camino binario aparecería aquí. URL propia, distinta
+		// de la del test de passthrough: la caché de typefaces es de módulo y sobrevive al afterEach,
+		// así que reutilizarla dejaría este caso pasando por un acierto de caché.
+		ttfLoaderMock.failures.add('assets/only-json.json');
+
+		const fixture = createTextureScene(themeWithFont('assets/only-json.json'));
+		fixture.detectChanges();
+		await fixture.whenStable();
+
+		// El recurso de conversión queda IDLE (params undefined), no en error.
+		expect(ttfLoaderMock.loaded).toEqual([]);
+		expect(warn.mock.calls.map((call) => String(call[0])).join('\n')).not.toContain('fuente');
 	});
 });
 

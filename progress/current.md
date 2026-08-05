@@ -10,12 +10,51 @@
 `done`, 8 veredictos APPROVED, N3 firmada por Sergio el 2026-08-05). Bitácora en
 `progress/history.md`.
 
-**`spec-04` redactada y activada**, con las 7 tareas desglosadas en `feature_list.json`. **T1
-cerrada (`done`, APPROVED)**; T2–T7 en `pending`.
+**`spec-04` redactada y activada**, con las 7 tareas desglosadas en `feature_list.json`. **T1 y T3
+cerradas (`done`, APPROVED)**; T2 y T4–T7 en `pending`.
 
 Baseline heredado: `pnpm build` ✅ · `pnpm ng lint ngx-products-3d` ✅ ·
 `pnpm ng test ngx-products-3d` **160/160** ✅ · `pnpm ng build products-3d-playground` ✅.
 **El implementer debe revalidarlo antes de tocar nada** (§1 de `AGENTS.md`).
+
+## ✅ Cerrada: spec-04-T3 — `badge-font-opentype` (feature `id: 3`)
+
+- **Estado**: **`done`** — **APPROVED** por el reviewer, sin cambios requeridos.
+  Veredicto: `progress/review_spec-04-T3.md` · Informe: `progress/impl_spec-04-T3.md`.
+  `feature_list.json` id 3 = `done`; T2 y T4–T7 siguen en `pending`. **Sin commitear**: lo hace el
+  leader.
+- **Nota de proceso**: el informe de implementación lo redactó **el leader**, porque el implementer
+  original se colgó **tres veces** por errores de infraestructura; y la ronda de **mutaciones de
+  discriminancia** se sustituyó por **análisis por construcción**, validado después por el reviewer.
+- **Baseline revalidado antes de tocar nada** (2026-08-05): `pnpm build` ✅ ·
+  `pnpm ng lint ngx-products-3d` ✅ · `pnpm ng test ngx-products-3d` **160/160** ✅.
+- **Siguiente**: T2 y T4–T7 pendientes. T2 y T4 pueden arrancar sin esperar a nada.
+- **Plan** (ejecutado):
+  1. Fn pura `isOpentypeFontUrl(url)` en `badge-font.ts` (nuevo, interno: no entra en
+     `public-api.ts`) + caché por URL de typefaces parseados con `import()` **dinámico** de
+     `three/addons/loaders/TTFLoader.js`.
+  2. `badge-texture.component.ts`: `resource()` de Angular sobre la URL binaria (params
+     `undefined` ⇒ recurso IDLE para el camino JSON) + `resolvedFont()` que hace **passthrough
+     del string** si la URL es typeface JSON.
+  3. Template: gate `@if (resolvedFont(); as font)` sobre el `@for` de los textos ⇒ fuente rota o
+     aún sin parsear = **sin texto**, nunca excepción. Warn dev con prefijo `[ngx-products-3d]`.
+  4. N1: `badge-font.spec.ts` (extensiones, caché, fallo) + tests nuevos en
+     `badge-texture.component.spec.ts` (passthrough, degradado, warn).
+  5. Verificación: los 3 comandos + `pnpm ng build products-3d-playground` + comprobación de que
+     `dist/ngx-products-3d/package.json` no gana deps y de que el `import()` sigue siendo dinámico
+     (chunk aparte con `opentype` en el bundle del playground).
+- **Criterios de aceptación aplicables** (copiados de `feature_list.json` id 3):
+  - `isOpentypeFontUrl` testeada N1: `.otf`, `.OTF`, `.ttf`, `.otf?v=2`, `.otf#hash`, `.json`,
+    string vacío
+  - Una URL de typeface JSON sigue haciendo passthrough del string a soba (test que lo demuestre)
+  - El import de `TTFLoader` es dinámico: no aparece en el bundle de quien no usa OTF
+  - `dist/ngx-products-3d/package.json` no gana ninguna dependencia nueva
+  - Misma URL ⇒ misma referencia de objeto (test de estabilidad de la caché)
+  - Una fuente rota degrada a sin texto con warn dev, sin excepción
+  - `SOBA_TEXT3D_DEFAULT_HEIGHT` sigue en su sitio y sigue discriminando
+  - `pnpm build` / `pnpm ng lint ngx-products-3d` / `pnpm ng test ngx-products-3d` verdes
+- **Fuera de alcance explícito**: `REQUIRED_THEME_URL_FIELDS`, los `fontUrl` de la demo (T6, hoy en
+  404 a propósito), layout de textos (T2), correa (T4/T5), docs (T7).
 
 ## ✅ Cerrada: spec-04-T1 — `badge-base-color-111` (feature `id: 1`)
 

@@ -23,7 +23,7 @@ export interface Products3dBadgeTheme {
 	baseTextures: Record<string, string>;
 	/** Fallback obligatorio si el tier no existe en baseTextures */
 	defaultBaseTextureUrl: string;
-	/** Typeface JSON (three) para Text3D */
+	/** Fuente de los textos: typeface JSON de three, `.otf` o `.ttf` (detección por extensión) */
 	fontUrl: string;
 	/**
 	 * Color base global del modelo. Default `BADGE_BASE_COLOR` (`badge.config.ts`, negro).
