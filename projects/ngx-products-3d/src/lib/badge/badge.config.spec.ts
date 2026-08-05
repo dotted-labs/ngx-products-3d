@@ -136,7 +136,7 @@ describe('BADGE_TEXT_LAYOUT', () => {
 			expect(slot).not.toHaveProperty('position');
 			expect(slot).not.toHaveProperty('rotation');
 			expect(slot.anchor).toHaveLength(2);
-			expect(slot.align).toBe('right');
+			expect(slot.align).toBe('left');
 			expect(slot.size).toBeGreaterThan(0);
 			expect(slot.height).toBeGreaterThan(0);
 			expect(slot.maxWidth).toBeGreaterThan(0);
@@ -154,38 +154,38 @@ describe('BADGE_TEXT_LAYOUT', () => {
 		}
 	});
 
-	it('places name and memberNumber at the BOTTOM-RIGHT of the face', () => {
-		// El anchor tiene el origen abajo-izquierda: u > 0.5 es la mitad derecha y v < 0.5 la mitad
-		// inferior (spec-03-F4v2 R3). Es la mitad INFERIOR de la tarjeta porque la escena RT tiene
+	it('places name and memberNumber at the BOTTOM-LEFT of the face', () => {
+		// El anchor tiene el origen abajo-izquierda: u < 0.5 es la mitad izquierda y v < 0.5 la mitad
+		// inferior (spec-04 R3). Es la mitad INFERIOR de la tarjeta porque la escena RT tiene
 		// +Y arriba, no la V del GLB.
 		for (const field of ['name', 'memberNumber'] as const) {
 			const [u, v] = slotFor(field).anchor;
 
-			expect(u).toBeGreaterThan(0.5);
+			expect(u).toBeLessThan(0.5);
 			expect(v).toBeLessThan(0.5);
 		}
 	});
 
-	it('stacks the tier above name and memberNumber, flush to the same right edge', () => {
+	it('stacks the tier above name and memberNumber, flush to the same left edge', () => {
 		const tier = slotFor('tier');
 		const name = slotFor('name');
 		const memberNumber = slotFor('memberNumber');
 
 		expect(tier.anchor[1]).toBeGreaterThan(name.anchor[1]);
 		expect(name.anchor[1]).toBeGreaterThan(memberNumber.anchor[1]);
-		// Misma U en los tres = bandera por la derecha (con align 'right', el borde derecho común).
+		// Misma U en los tres = bandera por la izquierda (con align 'left', el borde izquierdo común).
 		expect(tier.anchor[0]).toBe(name.anchor[0]);
 		expect(memberNumber.anchor[0]).toBe(name.anchor[0]);
 	});
 
 	it('keeps every slot inside the face even at its full maxWidth', () => {
-		// Con align 'right' el texto ocupa [anchorX − maxWidth, anchorX]: un maxWidth mayor que el
-		// hueco disponible sacaría el texto por el borde izquierdo de la tarjeta.
+		// Con align 'left' el texto ocupa [anchorX, anchorX + maxWidth]: un maxWidth mayor que el
+		// hueco disponible sacaría el texto por el borde derecho de la tarjeta.
 		for (const slot of BADGE_TEXT_LAYOUT) {
 			const anchorX = (slot.anchor[0] - 0.5) * BADGE_FRONT_FACE.width;
 
-			expect(anchorX).toBeLessThanOrEqual(BADGE_FRONT_FACE.halfWidth);
-			expect(anchorX - slot.maxWidth).toBeGreaterThanOrEqual(-BADGE_FRONT_FACE.halfWidth);
+			expect(anchorX).toBeGreaterThanOrEqual(-BADGE_FRONT_FACE.halfWidth);
+			expect(anchorX + slot.maxWidth).toBeLessThanOrEqual(BADGE_FRONT_FACE.halfWidth);
 		}
 	});
 

@@ -336,23 +336,23 @@ export interface BadgeTextSlot {
 /**
  * Layout data-driven de los textos del socio sobre el frente de la tarjeta: la escena de textura
  * solo itera este array (reordenar/ajustar slots NO toca el componente). `name` y `memberNumber`
- * van ABAJO-DERECHA alineados a la derecha, con el `tier` justo encima (spec-03-F4v2 R3); las
- * anclas comparten la U (0.92) para que las tres líneas queden a bandera por la derecha.
+ * van ABAJO-IZQUIERDA alineados a la izquierda, con el `tier` justo encima (spec-04 R3); las
+ * anclas comparten la U (0.08) para que las tres líneas queden a bandera por la izquierda.
  *
  * La z NO va en el slot: es común a los tres y vive en `BADGE_TEXTURE.textLayerZ` (capa por delante
  * del arte del tier). Valores de arranque de la spec; el ajuste fino es visual (T7, N3).
  */
 export const BADGE_TEXT_LAYOUT: BadgeTextSlot[] = [
-	{ field: 'name', anchor: [0.92, 0.16], align: 'right', size: 0.09, height: 0.01, maxWidth: 0.65 },
+	{ field: 'name', anchor: [0.08, 0.16], align: 'left', size: 0.09, height: 0.01, maxWidth: 0.65 },
 	{
 		field: 'memberNumber',
-		anchor: [0.92, 0.08],
-		align: 'right',
+		anchor: [0.08, 0.08],
+		align: 'left',
 		size: 0.06,
 		height: 0.01,
 		maxWidth: 0.4,
 	},
-	{ field: 'tier', anchor: [0.92, 0.24], align: 'right', size: 0.05, height: 0.01, maxWidth: 0.4 },
+	{ field: 'tier', anchor: [0.08, 0.24], align: 'left', size: 0.05, height: 0.01, maxWidth: 0.4 },
 ];
 
 /** Textos del frente de la tarjeta: formato y color (el encaje va por slot en `BADGE_TEXT_LAYOUT`) */

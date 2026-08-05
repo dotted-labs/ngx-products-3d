@@ -10,12 +10,38 @@
 `done`, 8 veredictos APPROVED, N3 firmada por Sergio el 2026-08-05). Bitácora en
 `progress/history.md`.
 
-**`spec-04` redactada y activada**, con las 7 tareas desglosadas en `feature_list.json`. **T1 y T3
-cerradas (`done`, APPROVED)**; T2 y T4–T7 en `pending`.
+**`spec-04` redactada y activada**, con las 7 tareas desglosadas en `feature_list.json`. **T1, T2 y
+T3 cerradas (`done`, APPROVED)**; T4–T7 en `pending`.
 
 Baseline heredado: `pnpm build` ✅ · `pnpm ng lint ngx-products-3d` ✅ ·
 `pnpm ng test ngx-products-3d` **160/160** ✅ · `pnpm ng build products-3d-playground` ✅.
 **El implementer debe revalidarlo antes de tocar nada** (§1 de `AGENTS.md`).
+
+## ✅ Cerrada: spec-04-T2 — `badge-text-bottom-left` (feature `id: 2`)
+
+- **Estado**: **`done`** — **APPROVED** por el reviewer, sin cambios requeridos.
+  Veredicto: `progress/review_spec-04-T2.md` · Informe: `progress/impl_spec-04-T2.md`.
+  `feature_list.json` id 2 = `done`; T4–T7 siguen en `pending`. **Sin commitear**: lo hace el leader.
+- **P22 cerrado**: ya existe el test que distingue el `maxWidth` **por slot** del global, así que
+  **P22 sale de la lista de backlog**.
+- **Siguiente**: T4–T7 pendientes. T4 puede arrancar sin esperar a nada.
+- **Plan** (ejecutado):
+  1. `BADGE_TEXT_LAYOUT` (`badge.config.ts`): las 3 anclas `u = 0.92 → 0.08` y `align 'right' →
+     'left'`. V, `size`, `height` y `maxWidth` intactos. JSDoc de la constante reescrito.
+  2. Los **4** invariantes de `badge.config.spec.ts` de la tabla de R3, reescritos sin relajarlos.
+  3. Los 2 tests de anclaje de `badge-texture.component.spec.ts` que codificaban `align 'right'`
+     sobre el layout publicado (fallaban de verdad), reapuntados a la izquierda.
+  4. **P22 cerrado**: test nuevo que exige el `maxWidth` **por slot** (mata el mutante
+     `BADGE_TEXT_LAYOUT[0].maxWidth`).
+  5. Discriminancia con 2 mutaciones temporales revertidas por copia previa + `sha256` (norma 1).
+- **Criterios de aceptación aplicables** (copiados de `feature_list.json` id 2): tres slots con
+  `u = 0.08` y `align 'left'` con V/size/height/maxWidth intactos · `BadgeTextSlot` y las tres fns
+  puras sin tocar · los cuatro invariantes reescritos y discriminantes · P22 cerrado · JSDoc sin
+  «abajo-derecha» · `build` / `lint` / `test` verdes.
+- **Verificación**: `pnpm build` ✅ · `pnpm ng lint ngx-products-3d` ✅ ·
+  `pnpm ng test ngx-products-3d` **178/178** ✅ (baseline de entrada 177/177).
+- **Fuera de alcance explícito**: `badge-texture.component.ts` (no se toca), README publicado
+  (documenta el layout abajo-derecha → **T7**), correa (T4/T5), demo y N3 visual (T6).
 
 ## ✅ Cerrada: spec-04-T3 — `badge-font-opentype` (feature `id: 3`)
 
@@ -194,6 +220,7 @@ abierta**: la 0.3.0 acumula ya los breaking de tres specs (F3, F4v2 y ésta).
 
 ### Absorbidos por spec-04 (ya no son backlog)
 
-- **P22** (mutante superviviente: ningún test distingue el `maxWidth` **por slot** del global) → T2.
+- **P22** (mutante superviviente: ningún test distingue el `maxWidth` **por slot** del global) → T2,
+  **cerrado y APPROVED** (`progress/review_spec-04-T2.md`). Fuera del backlog.
 - **`BADGE_BAND.repeat` derivado** (hoy `-3.383` precalculado a mano, obsoleto en silencio si alguien
   toca el fov) → T4.

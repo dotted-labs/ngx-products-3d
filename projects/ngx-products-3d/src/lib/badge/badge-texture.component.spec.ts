@@ -576,17 +576,41 @@ describe('Products3dBadgeTexture text anchoring', () => {
 		expect(mesh.scale.z).toBe(1);
 	});
 
-	it('lands the right edge of a SHRUNK text on its anchor (offset over the scaled width)', () => {
+	it('lands the left edge of a SHRUNK text on its anchor (offset over the scaled width)', () => {
 		const [nameSlot] = BADGE_TEXT_LAYOUT;
 		const mesh = textMesh(nameSlot.maxWidth * 2);
 
 		internalsOf(createTextureScene()).fitTextMeshes([mesh]);
 
 		const rawWidth = measuredWidth(mesh);
-		expect(mesh.position.x + rawWidth * mesh.scale.x).toBeCloseTo(anchorX(nameSlot), 10);
-		// ...y NO donde lo dejaría el ancho crudo: con el bbox sin escalar, este texto se despegaría
-		// del borde derecho justo la mitad de su ancho (criterio 4 de la feature).
-		expect(mesh.position.x).not.toBeCloseTo(anchorX(nameSlot) - rawWidth, 3);
+		// Con align 'left' el borde anclado es el IZQUIERDO y no se mueve al reducir la escala.
+		expect(mesh.position.x).toBeCloseTo(anchorX(nameSlot), 10);
+		// El texto crece hacia +X y, ya escalado, agota justo el maxWidth del slot: el offset de
+		// alineado se aplica sobre el ancho ESCALADO, no sobre el crudo.
+		expect(mesh.position.x + rawWidth * mesh.scale.x).toBeCloseTo(
+			anchorX(nameSlot) + nameSlot.maxWidth,
+			10,
+		);
+		// ...y NO donde lo dejaría un alineado a la derecha, que restaría el ancho entero (el layout
+		// vivía abajo-DERECHA hasta spec-04 R3; si alguien lo revierte, esta aserción cae).
+		expect(mesh.position.x).not.toBeCloseTo(anchorX(nameSlot) - rawWidth * mesh.scale.x, 3);
+	});
+
+	it('fits each slot against ITS OWN maxWidth, not the maxWidth of the first slot', () => {
+		// P22 del backlog: los slots de tier y memberNumber tienen un maxWidth (0.4) distinto del de
+		// name (0.65). Sin esta aserción, sustituir el maxWidth POR SLOT por el global
+		// (BADGE_TEXT_LAYOUT[0].maxWidth) deja la suite entera en verde.
+		const meshes = BADGE_TEXT_LAYOUT.map((slot) => textMesh(slot.maxWidth * 2));
+
+		internalsOf(createTextureScene()).fitTextMeshes(meshes);
+
+		meshes.forEach((mesh, index) => {
+			const slot = BADGE_TEXT_LAYOUT[index];
+			expect(measuredWidth(mesh) * mesh.scale.x).toBeCloseTo(slot.maxWidth, 10);
+		});
+		// Y el layout sigue teniendo maxWidth distintos: igualarlos dejaría el caso de arriba sin
+		// capacidad de discriminar, en silencio.
+		expect(new Set(BADGE_TEXT_LAYOUT.map((slot) => slot.maxWidth)).size).toBeGreaterThan(1);
 	});
 
 	it('anchors each slot of the shipped layout on its own anchor and the shared text layer', () => {
@@ -596,13 +620,17 @@ describe('Products3dBadgeTexture text anchoring', () => {
 
 		meshes.forEach((mesh, index) => {
 			const slot = BADGE_TEXT_LAYOUT[index];
-			// align 'right' con escala 1: el borde derecho (x + ancho) cae sobre el anchor.
+			// align 'left' con escala 1: el borde izquierdo (position.x) cae sobre el anchor y el
+			// texto crece hacia +X.
 			expect(mesh.scale.x).toBe(1);
-			expect(mesh.position.x + measuredWidth(mesh)).toBeCloseTo(anchorX(slot), 10);
+			expect(mesh.position.x).toBeCloseTo(anchorX(slot), 10);
 			expect(mesh.position.y).toBeCloseTo(anchorY(slot), 10);
 			expect(mesh.position.z).toBe(BADGE_TEXTURE.textLayerZ);
 			// Y todos caen dentro de la cara: los textos vuelven al cuadro (fuera de él desde T3).
 			expect(mesh.position.x).toBeGreaterThanOrEqual(-BADGE_FRONT_FACE.halfWidth);
+			expect(mesh.position.x + measuredWidth(mesh)).toBeLessThanOrEqual(
+				BADGE_FRONT_FACE.halfWidth,
+			);
 			expect(Math.abs(mesh.position.y)).toBeLessThanOrEqual(BADGE_FRONT_FACE.halfHeight);
 		});
 	});
