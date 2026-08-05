@@ -63,9 +63,9 @@ describe('assertValidBadgeTheme', () => {
 });
 
 describe('resolveBaseColor', () => {
-	it('falls back to BADGE_BASE_COLOR (black) when the theme defines no baseColor', () => {
+	it('falls back to BADGE_BASE_COLOR (near-black #111111) when the theme defines no baseColor', () => {
 		expect(resolveBaseColor(makeTheme())).toBe(BADGE_BASE_COLOR);
-		expect(BADGE_BASE_COLOR).toBe('#000000');
+		expect(BADGE_BASE_COLOR).toBe('#111111');
 	});
 
 	it('returns theme.baseColor when defined', () => {
@@ -81,7 +81,7 @@ describe('resolveBaseColor', () => {
 });
 
 describe('resolveClipColor', () => {
-	it('falls back to BADGE_BASE_COLOR (black) when neither colors.clip nor baseColor are defined', () => {
+	it('falls back to BADGE_BASE_COLOR (near-black #111111) when neither colors.clip nor baseColor are defined', () => {
 		expect(resolveClipColor(makeTheme())).toBe(BADGE_BASE_COLOR);
 	});
 

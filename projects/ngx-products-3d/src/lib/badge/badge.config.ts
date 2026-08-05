@@ -146,7 +146,7 @@ export const BADGE_FRONT_FACE = {
  * Único sitio donde vive este literal: los componentes lo consumen a través de las fns de
  * resolución de `badge-theme.ts`, nunca escriben el color a mano.
  */
-export const BADGE_BASE_COLOR = '#000000';
+export const BADGE_BASE_COLOR = '#111111';
 
 /**
  * Separación en z entre las capas de la escena de textura (fondo opaco de `baseColor` → arte del
