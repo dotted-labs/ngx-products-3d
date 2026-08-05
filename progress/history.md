@@ -239,3 +239,60 @@
 - **Publicación 0.3.0**: bump + `CHANGELOG.md` creado (no existía) + aviso de migración en el README publicado. **Dos breaking changes**, de ahí el minor y no un patch (`^0.2.1` habría instalado un patch y roto builds ajenos): (a) cambia el contrato del GLB (origen clip → centro), y es **silencioso** — un modelo de 0.2.x carga sin error y renderiza desplazado 1.45 uds; (b) `BADGE_CARD_PLACEHOLDER` deja de exportarse (huérfano desde 0.2.0, nunca documentado, pero viajaba en el tarball).
 - **Verificación final**: build ✅ · lint ✅ · **80/80** ✅ · playground ✅ · `dist/ngx-products-3d` con 0.3.0 y el README de migración, sin binarios.
 - **Deuda registrada para spec futura**: el frente de la tarjeta se deforma con el aspecto de la **ventana** (el portal hereda el `size` del canvas mientras el FBO es cuadrado) y con ventana ancha el plano base deja franjas oscuras — preexistente desde 0.2.1, excluido por el «No hacer» de esta spec. Recomendación del reviewer al abordarlo: derivar el aspecto del bbox del GLB en vez de clavar 1.6/2.25, ~2 % de overscan en `planeSize` y evaluar un FBO no cuadrado. Además: derivar `BADGE_BAND.repeat` del fov con **función pura evaluada al cargar el módulo (no `computed()`)** y el aspecto de textura como parámetro. Más los "pequeños cambios" visuales que el usuario dejó anotados en la N3.
+
+## 2026-08-01 / 2026-08-05 — spec-03-F4v2 (diseño frontal de la card) → COMPLETADA y archivada
+
+- **Rol**: leader (orquestación); 8 features, cada una con implementer → reviewer (las 8 **APROBADAS**:
+  6/6, 6/6, 8/8, 7/7, 6/6, 8/8, 9/9, 7/7). Tests **80 → 160**. Commits: `557cb0f`, `ae35fa2`,
+  `69c7f61`, `cea05d6`, `c2c7286`, `1157122` en `feature/blender-assets`.
+- **Objetivo**: cerrar la deuda que dejó anotada spec-03-F3 — el frente de la tarjeta **se deformaba
+  con el aspecto de la ventana** — y darle diseño real (arte con alpha sobre un color base).
+- **La spec se revisó ANTES de implementar** y traía cuatro afirmaciones falsas sobre el código y
+  tres huecos (`progress/review_spec-03-F4v2.md`); se corrigió antes de repartir trabajo.
+- **Diagnóstico real (T3)**: había **tres** relaciones de aspecto encadenadas, no dos. El dominante
+  era el `aspect` de la cámara de la escena RT. El implementer verificó las citas en `node_modules` y
+  descubrió que `updateCamera()` del core **no llega a ejecutarse** sobre la cámara del portal (sus
+  tres rutas están muertas para este caso); lo que deformaba era el effect de la cámara **de soba**.
+  El reviewer lo confirmó línea a línea y dictaminó que `manual: true` no es cargo-cult: blinda una
+  ruta latente que se activaría con un cambio de una línea aguas arriba.
+- **Solución**: FBO 1600×2250 + cámara ortográfica `manual` con frustum explícito, todo derivado de
+  `BADGE_FRONT_FACE` (a su vez derivado de `cardColliderHalfExtents`: prohibido duplicar el 1.6/2.25);
+  escena RT en tres capas (quad opaco de `baseColor` → arte del tier con alpha → textos); textos
+  anclados abajo-derecha con escala **uniforme** y offset de alineado sobre el ancho ya escalado.
+- **N3 (T7) con Chrome real + GPU**: el defecto está **CERRADO**. 1280×900 vs 640×900 alineado por
+  bbox → **0 píxeles distintos dentro de la tarjeta** (los 219 que difieren caen fuera). El reviewer
+  lo remidió con un decodificador PNG **propio** y corrigió dos afirmaciones del informe: la
+  desviación en 1800×700 es 0.36 %/0.49 % (no «<0.15 %»), y los 10 frames idénticos prueban
+  estabilidad temporal, **no** ausencia de z-fighting (lo sostiene el zoom ×6).
+- **N3 del usuario (2026-08-05): CORRECTA.** Firma los nueve puntos que ningún agente podía cerrar
+  (destello al montar, z-fighting en movimiento, FPS a dpr 2, doble tone mapping, URL rota, canto y
+  dorso). Con eso la spec queda cerrable.
+- **Assets**: el alcance se redujo de seis `.webp` a **UNA** imagen tras comprobar que la lib solo
+  exige `defaultBaseTextureUrl`. Los seis PNG demo resultaron ser **256×256 SIN alfa** (verificado
+  leyendo cabeceras): inservibles — la demo nunca pudo mostrar el `baseColor`. Cinco borrados, el
+  sexto conservado como `base-wrong-ratio.png` (fixture del warn de ratio). Sergio aportó
+  `badge_vitality.png` (800×1125 = 32:45 exacto, RGBA, 34 % de píxeles transparentes).
+- **DOS INCIDENTES DE PROCESO, con normas nuevas:**
+  1. La sesión del 2026-08-02 murió dejando una **mutación de discriminancia sin revertir**
+     (`if (false as boolean)` en lugar de `if (ngDevMode)`): warn dev muerto y árbol rojo 119/120.
+     → Norma: **ninguna mutación temporal sobrevive al informe**; `false as boolean` no es una
+     construcción aceptable (Sergio, explícito).
+  2. Un implementer usó `git checkout --` para revertir una mutación y, como la rama **no tenía nada
+     commiteado**, borró el trabajo cerrado de T1 y T3. Reconstruido y verificado a tres bandas
+     (`md5sum`, diff previo del leader, `git diff` del reviewer). → Normas: **prohibido
+     `git checkout --`/`restore`/`stash` sobre trabajo sin commitear** (copia previa + `md5sum -c`),
+     y **commitear cada feature cerrada** en vez de acumular en el working tree.
+  3. Un implementer justificó una decisión con «un aviso del leader» que **nunca se envió**.
+     → Norma: no atribuir instrucciones a intercambios no verificables.
+- **Los reviewers añadieron valor real**, no fueron trámite: los de T4, T5 y T6 encontraron cada uno
+  mutaciones que los informes NO demostraban, y el de T6 detectó un **mutante superviviente** (P22).
+  El de T8 reconstruyó el delta de superficie pública 0.2.1 → HEAD contra el `.d.ts` del dist.
+- **0.3.0 sigue SIN publicar**: los breaking de esta spec se **plegaron** en su entrada del CHANGELOG
+  (`BadgeTextSlot` cambia de forma, `BADGE_TEXTURE.size` → `width`/`height`, `planeSize` fuera,
+  `BADGE_TEXT.maxWidth` fuera) y el defecto de deformación pasó de «conocido» a **corregido**.
+  Publicar = mergear a `main` (lo dispara CI). **Pendiente de GO explícito de Sergio.**
+- **Backlog heredado**: **P21** (la extrusión del texto depende de que soba siga importando el
+  `TextGeometry` de three-stdlib; si migra, se va a 50 uds en silencio), **P22** (ningún test
+  distingue el `maxWidth` por slot del global), **P23** (`#` suelto con `memberNumber` vacío, defecto
+  de la lib), **P24** (mensaje de consola con redacción anterior a T4), **H3** (`alignOffsetX` sin
+  `default`), más la higiene preexistente de CRLF/Prettier y `setupFiles` en `angular.json`.

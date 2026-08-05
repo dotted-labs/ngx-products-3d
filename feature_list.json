@@ -80,7 +80,7 @@
         "pnpm ng lint ngx-products-3d termina sin errores",
         "pnpm ng test ngx-products-3d muestra > 0 tests y todos verdes"
       ],
-      "status": "in_progress"
+      "status": "done"
     },
     {
       "id": 5,
@@ -98,7 +98,7 @@
         "pnpm ng lint ngx-products-3d termina sin errores",
         "pnpm ng test ngx-products-3d muestra > 0 tests y todos verdes"
       ],
-      "status": "in_progress"
+      "status": "done"
     },
     {
       "id": 6,
@@ -118,7 +118,7 @@
         "pnpm ng lint ngx-products-3d termina sin errores",
         "pnpm ng test ngx-products-3d muestra > 0 tests y todos verdes"
       ],
-      "status": "in_progress"
+      "status": "done"
     },
     {
       "id": 7,
@@ -139,7 +139,7 @@
         "pnpm ng test ngx-products-3d muestra > 0 tests y todos verdes",
         "pnpm ng build products-3d-playground termina sin errores"
       ],
-      "status": "in_progress"
+      "status": "done"
     },
     {
       "id": 8,
@@ -158,7 +158,7 @@
         "pnpm ng lint ngx-products-3d termina sin errores",
         "pnpm ng test ngx-products-3d muestra > 0 tests y todos verdes"
       ],
-      "status": "in_progress"
+      "status": "done"
     }
   ]
 }

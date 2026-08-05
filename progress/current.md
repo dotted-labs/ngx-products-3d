@@ -1,495 +1,90 @@
 # Sesión actual
 
-- **Fecha**: 2026-08-01
-- **Spec**: `docs/specs/active/spec-03-F4v2-front-design.md` (diseño frontal de la card)
-- **Fase**: 4 (v2) — desglosada en 8 features en `feature_list.json`
+- **Fecha**: 2026-08-05
+- **Spec**: ninguna activa. `docs/specs/active/` vacío.
 - **Rol**: leader
 
 ## Estado
 
-Spec **revisada y corregida antes de implementar**. El borrador traía cuatro afirmaciones falsas
-sobre el código actual y tres huecos; el análisis con referencias `fichero:línea` está en
-`progress/review_spec-03-F4v2.md` y las correcciones ya están aplicadas en la propia spec.
+**`spec-03-F4v2` (diseño frontal de la card) COMPLETADA y archivada** en
+`docs/specs/spec-03-F4v2-front-design.md`. Las 8 features en `done`, los 8 veredictos APPROVED, la
+N3 firmada por Sergio el 2026-08-05 («verificación correcta»). Bitácora completa en
+`progress/history.md`.
 
-Ninguna feature arrancada todavía. Baseline Nivel 2 verde antes de repartir trabajo:
-`pnpm build` ✅ · `pnpm ng lint ngx-products-3d` ✅ · `pnpm ng test ngx-products-3d` **80/80** ✅.
+Baseline actual: `pnpm build` ✅ · `pnpm ng lint ngx-products-3d` ✅ · `pnpm ng test
+ngx-products-3d` **160/160** ✅ · `pnpm ng build products-3d-playground` ✅.
 
-### Correcciones que llevaba la spec (resumen)
+## ⚠️ Decisión pendiente: publicación de la 0.3.0
 
-1. La RenderTexture **ya** es el `map` de la tarjeta, y la tarjeta **no usa el material `base`** del
-   GLB (usa `meshPhysicalMaterial` con clearcoat). Aplicar el borrador habría perdido el clearcoat.
-2. `baseColor` **no puede** ser el `color` del material de la tarjeta (three multiplica
-   `map × color`): entra como quad de fondo de la escena RT.
-3. La cámara ortográfica necesita **`manual: true`** y **frustum explícito**: cada uno cierra una
-   ruta distinta. Matizado el 2026-08-02 tras la verificación en `node_modules` de la feature 3 —
-   ver el log y el Dictamen 1 de `progress/review_spec-03-F4-feature3.md`.
-4. El estirado tenía **tres** aspectos encadenados, no dos; el dominante es el `aspect` de la cámara
-   de la escena RT, que es también el defecto «el frente se deforma con la ventana» que la 0.3.0
-   dejó anotado como conocido. Esta spec lo cierra.
+`0.3.0` está **preparada y NO publicada**. El registry sirve todavía `0.2.1`. La publicación la
+dispara **CI** (`.github/workflows/release-publish.yml`) al detectar el bump **en un push a `main`**.
 
-### Decisiones de Sergio (2026-08-01)
+Todo el trabajo vive en `feature/blender-assets` (6 commits, hasta `1157122`). **Mergear a `main` =
+publicar.** Requiere **GO explícito de Sergio**; el leader no mergea por su cuenta.
 
-- **Assets**: los aporta él. ⚠️ **REVISADO el 2026-08-03, ver abajo**: de seis `.webp` a **UNA**
-  imagen. Feature 7 sigue **`blocked`** hasta que llegue.
-- **Versionado**: los breaking se **pliegan en la 0.3.0**, que sigue sin publicar. → **no mergear a
-  `main` hasta cerrar la spec**, o CI publicaría una 0.3.0 a medias.
-- **Canto y dorso de la tarjeta**: fuera de alcance; se anota lo que se vea en la N3.
+La 0.3.0 acumula breaking de dos specs (F3 y F4v2), todos documentados en `CHANGELOG.md`.
 
-### Decisión de Sergio (2026-08-03): alcance de T7 reducido
+## Próxima spec (anunciada por Sergio el 2026-08-05, SIN redactar todavía)
 
-Los seis `.webp` pasan a ser **UNA sola imagen** (webp o png) con **canal alfa** y **ratio 32:45**.
+> «En la siguiente spec vamos a cambiar fuente, posición y color»
 
-- **Por qué**: la lib solo exige `defaultBaseTextureUrl`; `baseTextures` por tier es opcional y cae
-  al fallback (`badge-texture.ts:16`), así que una imagen ejercita el camino completo: color base
-  visible a través del alpha + arte encima + resolución por tier. Las otras cinco solo daban
-  variedad en la demo.
-- **El tamaño en píxeles es libre** mientras el ratio sea 32:45. Los 1600×2250 eran solo la
-  densidad de referencia (1000 px/unidad); 800×1125 o 1024×1440 valen igual. T5 avisa >1% de
-  desviación pero **no rompe**: renderiza estirado.
-- **Los seis PNG demo eran 256×256 SIN alfa** (verificado leyendo las cabeceras PNG): ratio 1:1 y
-  sin transparencia ⇒ inservibles para el frente nuevo. **Cinco borrados**; el sexto conservado y
-  renombrado a **`base-wrong-ratio.png`**, que hace de fixture del warn de ratio de T5 → Sergio
-  tampoco tiene que producir ese.
-- **Estado interino conocido**: los temas demo (`badge-demo.component.ts:17-31`,
-  `badge-demo.routes.ts:20-23`) siguen apuntando a los PNG borrados hasta que T7 los recablee. La
-  demo degrada a **solo-baseColor con warn dev**: es exactamente la degradación diseñada en T4, no
-  un bug.
+Se refiere a los **textos del socio** del frente de la tarjeta. Contexto que hereda:
 
-## Orden de trabajo
+- **La posición ya es data-driven** desde `BADGE_TEXT_LAYOUT` (`badge.config.ts`), con la forma de
+  `BadgeTextSlot` que estrenó T6: `field`, `anchor`, `align`, `size`, `height`, `maxWidth`.
+  ⚠️ **La trampa de la V**: `anchor[1] = 0` es el borde **INFERIOR** de la cara, al revés que los UV
+  del GLB (donde `v = 0` es arriba). Documentado en el README publicado.
+- **El color** sale de `theme.colors?.text ?? BADGE_TEXT.color`. La review de T7 dejó abierta una
+  **decisión de diseño**: el texto negro sobre el arte violeta queda **al límite de legibilidad**, y
+  ningún tema demo define `colors.text`. Esta spec es el sitio para resolverlo.
+- **La fuente** sale de `theme.fontUrl` (typeface JSON de `NgtsText3D`). Al tocarla, ojo con **P21**:
+  la extrusión (`height`) funciona solo mientras `angular-three-soba` importe el `TextGeometry` de
+  **three-stdlib**; el de three 0.182 ya solo lee `depth` (default 50) y la extrusión se rompería en
+  silencio.
+- Cambiar la forma de `BadgeTextSlot` o `BADGE_TEXT` es **API pública** (`public-api.ts` hace
+  `export *` de `badge.config`) → decidir si se pliega en la 0.3.0 (si sigue sin publicar) o exige
+  un nuevo minor.
 
-`1 → 2` y `3 → {4 → 5, 6}` son independientes entre sí; 7 espera assets; 8 cierra.
+**Antes de implementar**: redactar la spec en `docs/specs/active/`, revisarla contra el código real
+(en F4v2 el borrador traía cuatro afirmaciones falsas) y desglosarla en `feature_list.json`.
 
-## Pendientes anotados por las reviews (que NO se pueden perder)
+## Normas de proceso vigentes (salidas de incidentes reales, NO son teoría)
 
-Salidos de `progress/review_spec-03-F4-feature2.md`:
+1. **Prohibido `git checkout --`, `git restore`, `git stash`** sobre trabajo sin commitear. Para
+   revertir una mutación: **copia previa del fichero + `md5sum -c`**. (En F4v2 un `git checkout --`
+   borró el trabajo cerrado de dos features.)
+2. **Ninguna mutación temporal de discriminancia sobrevive al informe.** Nada de `false as boolean`,
+   `true ||`, `.only`, `.skip`, constantes alteradas ni aserciones relajadas. Barrer el propio diff
+   antes de reportar y dejar el árbol verde.
+3. **Commitear cada feature cerrada.** No acumular la spec entera en el working tree.
+4. **Sin aserciones vacuas**: nada que no pueda fallar. Demostrar discriminancia con roturas
+   temporales (revertidas según la norma 1).
+5. **No atribuir instrucciones a intercambios no verificables.** Citar literal lo que llegue.
+6. **En las N3, guardar el log de consola**, no solo capturas: si no, la parte «cero warnings» no es
+   reauditable.
+7. **El leader verifica el árbol por su cuenta** antes de pasar a review: los informes se contrastan,
+   no se aceptan de palabra.
 
-1. **A la N3 de T7** — migrar los cinco puntos de la checklist visual que dejó el implementer de T2:
-   `ember` sigue en cobre; `violet` pasa a **negro**; alternar temas no remonta el canvas; el frente
-   no se oscurece; sin GC spikes al alternar repetidamente.
-2. **Decisión de T7** — `DEMO_THEMES.violet` no define `colors.clip` ni `baseColor`, así que su
-   clip/clamp pasan de «metal del GLB» a negro. O se le da un `baseColor`/`colors.clip` explícito, o
-   se acepta el negro **por escrito**.
-3. **A T8 (CHANGELOG 0.3.0)** — un tema sin `colors.clip` pasa a mostrar clip/clamp con el
-   `baseColor` (negro por defecto) en vez del metal crudo del GLB. No es breaking de API (la 0.3.0
-   no está publicada) pero sí de aspecto.
-4. **Higiene, fuera de esta spec** — Prettier reporta ficheros no formateados por **CRLF** en todo el
-   repo (`endOfLine: lf` por defecto) más una desviación real preexistente en el template inline de
-   `badge-scene.component.ts:88-100`. `pnpm ng lint` pasa. Arreglo = fijar `endOfLine`/`.gitattributes`
-   y un `--write` en **commit dedicado**, no dentro de una feature.
+## Backlog (no pertenece a ninguna spec activa)
 
-Salidos de `progress/review_spec-03-F4-feature3.md`:
-
-5. **Al implementer de T4** (vuelve a abrir `badge-texture.component.ts`) — alinear el JSDoc de
-   `cameraOptions` con la spec ya corregida: añadir que la ruta de `updateCamera()` es hoy
-   **latente**. No se pidió como cambio de T3 para no dejar un diff de solo-comentario.
-6. **Higiene, fuera de esta spec** — `setupFiles` en el target `test` de `angular.json` (hoy no
-   define ninguno) para ejecutar el stub de `getContext('2d')` una vez y borrar sus **tres** copias.
-   No se hace ahora: tocar el runner en mitad de la spec cambiaría el entorno de verificación de las
-   features 4-8.
-7. **A T8 (CHANGELOG 0.3.0)** — `BADGE_TEXTURE.size` desaparece a favor de `width`/`height`; entran
-   `BADGE_FRONT_FACE` y `BADGE_TEXTURE.cameraFrustum` como API pública. Verificado que hoy ni el
-   README ni el CHANGELOG mencionan `BADGE_TEXTURE.size`, así que no hay documentación mintiendo.
-
-Salidos de `progress/review_spec-03-F4-feature4.md`:
-
-8. **A la N3 de T7 — tres modos de fallo SIN cobertura automática.** `[transparent]="true"` y el
-   quad de fondo sin gate viven en el **template**, y los specs lo sobrescriben → ningún test los
-   ancla. El reviewer evaluó tres alternativas (regex sobre el fuente, render real en jsdom, mover
-   `transparent` a config) y ninguna cubre el modo de fallo real sin violar `architecture.md` /
-   `verification.md`: se acepta el hueco **a cambio de que los tres pasen a la N3 como obligatorios**.
-9. **A la N3 de T7 — z-fighting entre el quad de `baseColor` y el arte** (hallazgo NUEVO del
-   reviewer, no estaba en el informe). Con `near 0.1` / `far 2000` (defaults de soba) y depth de 24
-   bits, el cuanto es ~1.2e-4 uds ⇒ `BADGE_RT_LAYER_GAP = 0.001` deja solo **~8 cuantos** de margen.
-   Si parpadea, la corrección es **bajar el `far` desde config**, NO subir el gap a ciegas. Verificar
-   también que el arte se ve unlit correcto (si sale negro, el material dejó de ser `basic`).
-10. **A T8 (CHANGELOG 0.3.0)** — nuevos públicos `BADGE_TEXTURE.frontPlaneSize` / `backdropPosition`
-    / `artPosition`; **breaking**: `BADGE_TEXTURE.planeSize` eliminado. `BADGE_RT_LAYER_GAP` **no**
-    entra (privada, confirmado en el `dist`).
-
-Salidos de `progress/review_spec-03-F4-feature5.md`:
-
-11. **A la N3 de T7 — checklist del warn de ratio**: warn ÚNICO con `base-wrong-ratio.png` 256×256
-    (esperado 0.7111 / medido 1.0000); con ese asset **el frente se sigue viendo estirado** (la lib
-    avisa, no corrige); cero warns con los seis `.webp` correctos; el aviso **no se reimprime por
-    frame ni al cambiar SOLO el nombre del socio** — es lo que blinda el `untracked` de
-    `badge-texture.component.ts:218` y **no hay test que lo cubra**; cero warns en build de
-    producción; conservar el PNG 256×256.
-12. **A T8 (README/CHANGELOG 0.3.0)** — nuevos públicos **aditivos** `BADGE_TEXTURE.assetAspect` y
-    `assetAspectTolerance` (verificados en el `.d.ts` del dist). `isRatioWithinTolerance` **no**
-    entra (interna). Documentar que la lib **avisa en dev, no lanza y no deja de renderizar** ante
-    una desviación >1% sobre 32:45.
-13. **Norma de proceso** (a raíz de T5) — **no atribuir instrucciones a intercambios no
-    verificables**. El implementer de T5 justificó una mutación por «un aviso del leader» que NUNCA
-    se envió. No bloqueó (el leader y el reviewer verificaron el código real, limpio), pero una
-    afirmación así invalida el informe como evidencia: verificar siempre el árbol.
-
-Salidos de `progress/review_spec-03-F4-feature6.md`:
-
-14. **A la N3 de T7 (P14)** — el z-fighting del pendiente 9 pasa a tener **TRES** capas: `textLayerZ`
-    (0.002) queda a un solo gap del arte (~8 cuantos de depth con `far` 2000). Si parpadea: **bajar
-    el `far` desde config**, NO subir el gap.
-15. **A la N3 de T7 (P15)** — el effect de colocación ahora depende de `member()` (antes no) ⇒ corre
-    una vez con la geometría VIEJA al cambiar de socio. Verificar que no se ve un frame mal escalado.
-16. **A la N3 de T7 (P16)** — al salir `position` de las options, el mesh nace en (0,0,0) hasta el
-    primer effect; debería ser invisible (sin geometría). Confirmar que no hay destello central al
-    montar.
-17. **A T8 (P17, BREAKING)** — forma de `BadgeTextSlot` (fuera `position`/`rotation`; entran
-    `anchor`/`align`/`maxWidth`) y desaparición de `BADGE_TEXT.maxWidth`.
-18. **A T8 (P18, aditivo)** — `BadgeTextAlign` y `BADGE_TEXTURE.textLayerZ` (verificados en el dist).
-    `BadgeFaceRect`, `uvAnchorToRtPosition` y `alignOffsetX` quedan **internos**.
-19. **A T8 (P19)** — documentar la **trampa de la V**: `anchor[1] = 0` es el borde **INFERIOR**, al
-    revés que los UV del GLB (donde v=0 es arriba).
-20. **A T8 (P20)** — corregir **H1**: el JSDoc de `badge.config.ts:297-298` sigue diciendo «tuplas
-    mutables a propósito porque los inputs de soba no admiten `readonly`», pero tras T6 ninguna tupla
-    del slot llega a soba (solo `size`/`height`, números). Se publica en el `.d.ts`. T8 es el único
-    pendiente que reabre `badge.config.ts`.
-
-**F4 no es cerrable hasta que se ejecute la N3 de T7**, aunque las features individuales se aprueben.
-
-## ⚠️ PARA EL OJO DE SERGIO (N3 que ningún agente puede firmar)
-
-T7 verificó con Chrome real + GPU todo lo medible. Lo que queda **necesita ojos humanos** porque son
-fenómenos dinámicos, de un frame, o dependientes de su máquina. Lista accionable completa (qué mirar
-/ qué sería un fallo) en la sección homónima de `progress/review_spec-03-F4-feature7.md`. Resumen:
-
-1. **Destello al montar** — hueco de muestreo real 864→1996 ms; mirar si aparece algo raro en el
-   centro al cargar.
-2. **Correa blanca ~1 s** al montar (sin textura todavía).
-3. **Frame mal escalado** al pegar un nombre largo (el effect corre una vez con la geometría vieja).
-4. **Z-fighting con la tarjeta EN MOVIMIENTO** (en reposo está descartado). Si parpadea: **bajar el
-   `far`**, NO subir el gap.
-5. **GC / FPS** con dpr 2 en su máquina (el agente midió 165 fps headless a dpr 1).
-6. **URL rota** — cambiar `badge-demo.component.ts:16` a `/assets/no-existe.png`: correcto = frente
-   liso violeta; fallo = blanco o negro. **Revertir después.**
-7. **Doble tone mapping** — comparar el arte contra el PNG original (¿sale lavado?).
-8. **Canto y dorso** a mano (fuera de alcance, solo anotar qué se ve).
-9. **Legibilidad y tamaño de los textos** — ver decisión pendiente abajo.
-
-## Decisiones de producto abiertas (de la review de T7)
-
-- **Contraste texto/arte**: el texto sale **negro sobre violeta**, al límite de legibilidad
-  (confirmado por el leader mirando las capturas). **NO bloquea** T7: ningún criterio de la feature
-  ni de la spec habla de contraste. Ningún tema demo define `colors.text`. Decisión de diseño de
-  Sergio + nota de README en T8.
-
-## Backlog aplazado (no entra en esta spec)
-
-- **P24 — mensaje de consola obsoleto.** `badge-texture.component.ts:243` dice «El frente se renderiza
-  sin fondo», redacción anterior a T4: ahora SÍ hay un quad opaco de `baseColor` detrás. El README
-  dice lo correcto («liso del color base», `:288-289`), así que la documentación no miente; el
-  impreciso es el mensaje. Arreglarlo dentro de T8 habría sido ampliación de alcance.
-- **P23 — `#` suelto con `memberNumber` vacío.** `badgeTextFor` (`badge-texture.ts:20-33`) no tiene
-  guarda para `memberNumber: ''` ⇒ el frente pinta el prefijo `#` solo. Es defecto **de la LIB**, no
-  de T7 (que no tocó ni un fichero de la lib, que es lo correcto). No entra en T8 (no es
-  documentación): backlog.
-- **P21 — `height` del texto depende de un detalle de soba.** La extrusión del `TextGeometry`
-  funciona SOLO mientras `angular-three-soba` importe el de **three-stdlib** (que traduce
-  `height`→`depth`); el de three 0.182 ya solo lee `depth`, con default **50**. Verificado por el
-  reviewer: `three-stdlib/geometries/TextGeometry.js:9,19` vs
-  `three/examples/jsm/geometries/TextGeometry.js:50` (donde `height` ni aparece), y soba importando
-  el primero (`...abstractions.mjs:8`). Si soba migra, la extrusión se va a 50 uds **en silencio**.
-  Vigilar en cada bump de `angular-three-soba`.
-- **P22 — mutante superviviente (H2 de la review de T6).** `fitTextScale(width, slot.maxWidth)` →
-  `fitTextScale(width, BADGE_TEXT_LAYOUT[0].maxWidth)` deja **160/160 en verde**: ningún test
-  distingue «`maxWidth` por slot» de «global igual al de `name`», que es justo el breaking de T6.
-  Menor porque un global *realista* (3.6 o 0.4) sí cae con `badge-texture.component.spec.ts:416`.
-  Cierre estimado: **2 líneas** en `badge-texture.component.spec.ts:455`.
-- **H3 (nit)** — `alignOffsetX` tiene `switch` exhaustivo sin `default` ⇒ `undefined`/`NaN` para un
-  consumidor **JS** que pase un `align` inválido.
-- **`BADGE_BAND.repeat` derivado del fov**: hoy es `-3.383` precalculado a mano desde
-  `BADGE_CAMERA.fov`; si alguien cambia el fov queda obsoleto en silencio. Hacerlo **función pura
-  evaluada al cargar el módulo (NO `computed()`**: no hay estado reactivo y rompería la config
-  data-driven), con el aspecto de la textura como **parámetro**. No urge: el test de invariante
-  rompe si cambia el fov.
+- **P21** — `height` del texto depende de que soba importe el `TextGeometry` de three-stdlib
+  (`height`→`depth`); el de three 0.182 solo lee `depth`, default **50**. Si soba migra, la extrusión
+  se rompe **en silencio**. Vigilar en cada bump de `angular-three-soba`.
+- **P22** — mutante superviviente: `fitTextScale(width, slot.maxWidth)` → `BADGE_TEXT_LAYOUT[0].maxWidth`
+  deja 160/160 en verde. Ningún test distingue el `maxWidth` **por slot** del global. Cierre: ~2
+  líneas en `badge-texture.component.spec.ts:455`.
+- **P23** — `badgeTextFor` (`badge-texture.ts:20-33`) no tiene guarda para `memberNumber: ''` ⇒ el
+  frente pinta el prefijo `#` suelto. Defecto de la **lib**.
+- **P24** — `badge-texture.component.ts:243` dice «El frente se renderiza sin fondo», redacción
+  anterior a T4: ahora sí hay un quad opaco de `baseColor` detrás.
+- **H3** — `alignOffsetX` tiene `switch` exhaustivo sin `default` ⇒ `undefined`/`NaN` para un
+  consumidor **JS** con `align` inválido.
+- **`BADGE_BAND.repeat` derivado del fov** — hoy es `-3.383` precalculado a mano; si alguien cambia
+  el fov queda obsoleto en silencio. Hacerlo **función pura evaluada al cargar el módulo** (NO
+  `computed()`: no hay estado reactivo), con el aspecto de la textura como parámetro.
+- **Higiene fuera de spec** — (a) Prettier reporta ficheros no formateados por **CRLF** en todo el
+  repo (`endOfLine: lf` por defecto): arreglo = fijar `endOfLine`/`.gitattributes` + un `--write` en
+  **commit dedicado**. (b) `setupFiles` en el target `test` de `angular.json` para ejecutar el stub
+  de `getContext('2d')` una vez y borrar sus **tres** copias.
 - Propuestas P3/P4/P5 del implementer en `progress/impl_feature14.md`, sin aplicar.
-- Doble tone mapping de la escena RT y canto/dorso de la tarjeta: se observan en la N3 de esta spec,
-  se corrigen (si procede) en otra.
-
-## Estado de publicación
-
-`0.3.0` **preparada y NO publicada**: bump en `projects/ngx-products-3d/package.json`, `CHANGELOG.md`
-en la raíz y aviso de migración en el README publicado, todo commiteado en `feature/blender-assets`
-(`343ef45`). La publicación la dispara **CI** (`.github/workflows/release-publish.yml`) al detectar
-el bump **en un push a `main`**. El registry sirve todavía `0.2.1`.
-
-## En curso
-
-**Nada en curso.** T4 aprobada (7/7). Siguientes candidatas: **T5** y **T6**, independientes entre
-sí y ambas desbloqueadas (T5 depende de 4 ✅; T6 depende de 3 ✅). T7 sigue `blocked` por assets.
-
-<details>
-<summary>Plan de la feature 4 (cerrada, se conserva como referencia)</summary>
-
-- **Plan**:
-  1. `badge.config.ts`: retirar `planeSize: [5, 5]`; añadir tamaño de los quads de la escena RT
-     derivado de `BADGE_FRONT_FACE` + posiciones de capa (separación en z explícita).
-  2. `badge-texture.component.ts`: quad opaco `meshBasicMaterial` con `resolveBaseColor(theme())`
-     + plano del arte del tier con `transparent: true` encima; conservar gate `hasValue()` y
-     `colorSpace` sRGB.
-  3. Alinear el JSDoc de `cameraOptions` con la spec corregida (ruta de `updateCamera()` hoy
-     latente), sin tocar el código de la cámara — encargo del reviewer de T3.
-  4. Tests N1 nuevos en `badge.config.spec.ts` y `badge-texture.component.spec.ts`, demostrados
-     discriminantes con roturas temporales.
-  5. N2: `pnpm build` + `lint` + `test` + `ng build products-3d-playground`. Baseline **110/110**.
-- **Criterios de aceptación aplicables** (feature 4 de `feature_list.json`):
-  1. Las zonas transparentes del webp muestran `baseColor`; cambiar `baseColor` en el tema se ve en
-     el frente sin recrear el canvas.
-  2. El quad y el plano cubren exactamente el rect frontal derivado (sin bandas ni márgenes).
-  3. Una URL de textura rota sigue degradando a frente sin arte (con warn dev), nunca a escena en
-     blanco.
-  4. `planeSize [5,5]` ya no existe y ninguna constante de la escena RT es literal en el componente.
-  5. `pnpm build` sin errores.
-  6. `pnpm ng lint ngx-products-3d` sin errores.
-  7. `pnpm ng test ngx-products-3d` > 0 tests y todos verdes.
-- **N3 pendiente** (se ejecuta en T7, no en esta feature). Los textos siguen fuera de cuadro hasta
-  T6: consecuencia declarada del estado intermedio, no defecto de T4.
-
-</details>
-
-## Log
-
-- **2026-08-01** — Revisión de `spec-03-F4v2` (leader, sin subagentes: lectura pura). Baseline N2
-  verde. Spec corregida, `feature_list.json` desglosado en 8 features, `progress/current.md`
-  actualizado. Pendiente: arrancar feature 1 con un `implementer`.
-- **2026-08-01** — Baseline N2 revalidado antes de repartir: `pnpm build` ✅ · `pnpm ng lint
-  ngx-products-3d` ✅ · `pnpm ng test ngx-products-3d` **80/80** ✅. Feature 1
-  (`badge-theme-base-color`, T1) marcada `in_progress` y lanzada a un `implementer`. Informe
-  esperado en `progress/impl_spec-03-F4-feature1.md`; después, `reviewer` con los 6 criterios de
-  aceptación de la feature como checklist.
-- **2026-08-01** — Feature 1 (T1) **implementada, pendiente de review** (implementer). Tocados
-  `types.ts` (`baseColor` + JSDoc del reparto), `badge.config.ts` (`BADGE_BASE_COLOR`),
-  `badge-theme.ts` (`resolveBaseColor` / `resolveClipColor`) y `badge-theme.spec.ts` (+8 tests).
-  Ningún componente tocado. N2: `pnpm build` ✅ · `lint` ✅ · `test` **88/88** ✅ (baseline 80).
-  Informe en `progress/impl_spec-03-F4-feature1.md`. Duda abierta para el reviewer: las fns nuevas
-  quedan internas (no van a `public-api.ts`); `BADGE_BASE_COLOR` sí es pública vía `badge.config`.
-- **2026-08-01** — Feature 1 (T1) **APPROVED** por el `reviewer`, 6/6 criterios con evidencia
-  `fichero:línea`, sin cambios requeridos. Veredicto en `progress/review_spec-03-F4-feature1.md`.
-  Verificación de cierre ejecutada por el leader: `pnpm build` ✅ · `pnpm ng test ngx-products-3d`
-  **88/88** ✅ (el reviewer añadió además `pnpm ng build products-3d-playground` ✅ y comprobó el
-  `.d.ts` publicado).
-  **Decisión de superficie pública (cerrada):** `BADGE_BASE_COLOR` público vía el `export *` de
-  `badge.config`; `resolveBaseColor` / `resolveClipColor` **internas**. Razón principal: publicar
-  después es aditivo, despublicar es breaking → la opción reversible es no publicar; además
-  `badge-theme.ts` está al mismo nivel que `badge-texture.ts` / `badge-material.ts` / `badge-drag.ts`,
-  ninguno en el barrel. A reevaluar solo si `resolveClipColor` deja de ser un `??`.
-  **Deuda diferida a la feature 2:** con default negro `resolveClipColor` nunca devuelve `undefined`
-  ⇒ la rama «sin color → material original del GLB» de `badge-scene.component.ts` queda muerta; hay
-  que eliminarla o documentarla **en T2** (ya está en la descripción de esa feature).
-- **2026-08-01** — Feature 1 **cerrada** (`status: "done"` en `feature_list.json`). Feature 2
-  (`badge-metal-tint-base-color`, T2) marcada `in_progress` y lanzada a un `implementer`: consumir
-  `resolveClipColor` en el effect de tinte de `badge-scene.component.ts`, conservar el clon +
-  `onCleanup`, resolver la rama muerta y no tocar el `color` del `meshPhysicalMaterial` de la
-  tarjeta. Informe esperado en `progress/impl_spec-03-F4-feature2.md`; después, `reviewer`.
-  Baseline para esta feature: **88/88**.
-- **2026-08-01** — Feature 2 (T2) **implementada, pendiente de review** (implementer). Tocados solo
-  `badge-scene.component.ts` (effect de tinte → `resolveClipColor()`, comentario nuevo del
-  `meshPhysicalMaterial` sin `[color]`) y `badge-scene.component.spec.ts` (+8 tests: resolución,
-  no-mutación del `metal` del GLB, reactividad a `colors.clip` y a `baseColor` sin recrear el
-  componente, disposal del clon anterior en `onCleanup` y en destroy).
-  **Decisión: la rama «sin color → material original del GLB» se ELIMINA** (inalcanzable por
-  contrato de `resolveClipColor`); el porqué queda en el comentario del effect y **anclado por un
-  test** que falla si el default vuelve a ser `undefined`.
-  N2: `pnpm build` ✅ · `lint` ✅ · `test` **96/96** ✅ (baseline 88) · `ng build
-  products-3d-playground` ✅. Los 3 tests clave se verificaron **discriminantes** revirtiendo
-  temporalmente el effect (fallaban). **N3 pendiente** (checklist en el informe).
-  **Aviso para T7**: el tema demo `violet` no define `colors.clip` ni `baseColor` → su clip/clamp
-  pasan a negro (efecto esperado de R2, no bug).
-  Informe en `progress/impl_spec-03-F4-feature2.md`.
-- **2026-08-01** — Feature 2 (T2) **APPROVED**, 6/6 criterios con evidencia. Veredicto en
-  `progress/review_spec-03-F4-feature2.md`. Verificación de cierre del leader: `pnpm build` ✅ ·
-  `pnpm ng test ngx-products-3d` **96/96** ✅ (el reviewer añadió `ng build products-3d-playground` ✅
-  y comprobó que `dist/` no gana deps).
-  Dictámenes: **D1** (eliminar la rama muerta) aprobado — el porqué queda en el comentario del effect
-  y anclado por un test que cae si el default vuelve a ser `undefined`. **R1** (violet → negro) es la
-  consecuencia buscada de R2, se resuelve en T7. **R4** (Prettier) preexistente por CRLF, no bloquea.
-  Dos correcciones del reviewer sobre el informe: los tests previos del fichero eran **25, no 22**
-  (25+8=33, +63 del resto = 96); y la aserción `expect(fixture.componentInstance).toBe(instance)` es
-  **vacua** (no puede fallar) — el test sigue siendo válido por lo demás, pero «no se recrea el
-  canvas» solo lo prueba la N3. Criterio para lo que viene: no dejar aserciones que no puedan fallar.
-  Los cuatro pendientes derivados están arriba, en su propia sección.
-- **2026-08-01** — Feature 2 **cerrada** (`done`). Feature 3 (`badge-rt-orthographic-frustum`, T3)
-  marcada `in_progress`: es el **núcleo de la corrección** (FBO 1600×2250 + ortográfica `manual`).
-  Baseline para esta feature: **96/96**.
-- **2026-08-02** — Feature 3 (T3) **APPROVED**, 8/8 criterios. Veredicto en
-  `progress/review_spec-03-F4-feature3.md`. N2 de cierre del leader: `pnpm build` ✅ ·
-  `pnpm ng test ngx-products-3d` **110/110** ✅ (96 → +14). Tocados `badge.config.ts`
-  (`BADGE_FRONT_FACE` derivado, FBO `width`/`height`, `cameraFrustum`), `badge-texture.component.ts`
-  (ortográfica `manual`), `badge-scene.component.ts` y **dos specs nuevos**
-  (`badge.config.spec.ts`, `badge-texture.component.spec.ts`).
-  **Hallazgo de fondo (Dictamen 1):** el implementer verificó las citas de la spec en `node_modules`
-  y descubrió que `updateCamera()` **no llega a ejecutarse** sobre la cámara del portal — las tres
-  rutas que lo invocan están muertas para este caso (`mergeState` es condicional a que el portal
-  traiga `size`, y el effect vive en `storeFactory`, que el store del portal no usa). Lo que
-  deformaba el frente era el effect `camera.aspect = store.size…` de la cámara **de soba**
-  (`angular-three-soba-cameras.mjs:427-437`) y, en ortográfica, su fallback de `left/right/top/bottom`
-  al `store.size` (`:257-264`). El reviewer confirmó el análisis línea a línea y dictaminó que
-  `manual: true` **no es cargo-cult**: tiene default `false`, llega de verdad a la instancia de three
-  y blinda una ruta latente que se activaría con un cambio de una línea aguas arriba. Comprobó además
-  que no tiene contrapartida (la matriz de proyección se actualiza por otras dos vías).
-  → **Spec corregida por el leader** con los dos reemplazos exactos del Dictamen 1(c) (diagnóstico
-  punto 1, corrección técnica punto 2) más el punto 3 del encabezado.
-  **Dictamen 2:** el FBO se queda como literales `1600`/`2250` a propósito — derivarlo del rect
-  volvería tautológico el eslabón principal del invariante (y daría `1600.0000000000002`). Los
-  1000 px/unidad son decisión de producto, no consecuencia geométrica.
-  **Dictamen 3:** el reviewer **reprodujo él mismo** las tres mutaciones (FBO cuadrado → 4 fallos;
-  `manual` fuera → 1 fallo; `mapRepeat [1,1]` → 2 fallos) y restauró el árbol verificando con
-  `md5sum -c`. Sin aserciones vacuas esta vez.
-  **Estado intermedio esperado y declarado**: con el frustum ya en 1.6×2.25 pero `planeSize [5,5]` y
-  el `BADGE_TEXT_LAYOUT` viejo, el arte se ve recortado y los textos fuera de cuadro hasta T4 y T6.
-  Es aritmética esperada, no regresión.
-- **2026-08-02** — Feature 3 **cerrada** (`done`). Feature 4 (`badge-rt-backdrop-webp`, T4) marcada
-  `in_progress`: quad de `baseColor` + plano del webp del tier con alpha sobre `BADGE_FRONT_FACE`.
-  Baseline para esta feature: **110/110**.
-- **2026-08-01** — Feature 3 (T3) **implementada, pendiente de review** (implementer). Las tres
-  afirmaciones de la spec sobre `node_modules` se **verificaron** antes de escribir código
-  (`angular-three.mjs:601-615`, `angular-three-soba-staging.mjs:3315`,
-  `angular-three-soba-cameras.mjs:236-245`/`261-264`); detalle y un matiz sobre la reachability real
-  de `updateCamera()` en el informe. Tocados: `badge.config.ts` (`BADGE_FRONT_FACE` derivado de
-  `cardColliderHalfExtents`, `BADGE_TEXTURE.size` → `width: 1600`/`height: 2250`, `cameraFrustum`),
-  `badge-texture.component.ts` (`NgtsPerspectiveCamera` → `NgtsOrthographicCamera` con
-  `makeDefault` + **`manual: true`** + frustum explícito), `badge-scene.component.ts` (FBO
-  width/height) y tres specs (2 nuevos: `badge.config.spec.ts`, `badge-texture.component.spec.ts`).
-  `mapRepeat`/`mapOffset` **intactos** (+ test nuevo que lo ancla). N2: `pnpm build` ✅ · `lint` ✅ ·
-  `test` **110/110** ✅ (baseline 96) · `ng build products-3d-playground` ✅. Discriminación de los
-  tests nuevos demostrada con tres roturas temporales (informe §4).
-  **Estado intermedio esperado, no regresión**: el plano `planeSize [5,5]` y `BADGE_TEXT_LAYOUT`
-  siguen dimensionados para el encuadre viejo → arte recortado y textos fuera de cuadro hasta T4/T6.
-  **N3 pendiente** (checklist en el informe, va a la N3 de T7). **Para T8**: `BADGE_TEXTURE.size` →
-  `width`/`height` + `BADGE_FRONT_FACE` al CHANGELOG 0.3.0.
-  Informe en `progress/impl_spec-03-F4-feature3.md`.
-- **2026-08-03 — Sesión reanudada tras corte. Incidencia de proceso, leer entera.** La sesión previa
-  murió a mitad de T4: el código estaba escrito pero **sin informe** y con el árbol **rojo (119/120)**.
-  Causa: una **mutación temporal de la prueba de discriminancia sin revertir** —
-  `badge-texture.component.ts:203` con `if (false as boolean)` en lugar de `if (ngDevMode)`—, que
-  dejaba el warn dev muerto y tumbaba justo el test `degraded front`. `git log -S` confirmó el
-  origen. Revertida por un `implementer`, que además barrió el árbol en busca de otros restos
-  (`.only`/`.skip`/`xit`/constantes alteradas): ninguno.
-  **Sergio, explícito: `false as boolean` NO es una construcción aceptable en este repo.** Toda
-  mutación de verificación se revierte ANTES de reportar, y el árbol se deja verde.
-  **Segunda incidencia, la grave:** el implementer usó `git checkout -- badge.config.ts` para
-  revertir una mutación y, como la rama **no tenía NADA commiteado**, se llevó por delante también
-  el trabajo cerrado de T1 y T3. Lo reconstruyó a mano y lo validó con `md5sum -c`; el leader lo
-  contrastó contra un diff capturado antes del incidente y el reviewer lo verificó contra
-  `git diff` (prueba más fuerte: demuestra que **nada de HEAD se perdió**). Sin daño final.
-  → **Regla nueva: prohibido `git checkout --` sobre ficheros con trabajo sin commitear.** Para
-  revertir una mutación, copia previa del fichero y restauración desde ella.
-  → **Causa raíz atacada: se commitea T1-T4 en la rama** (decisión de Sergio, 2026-08-03). El
-  working tree deja de ser el único soporte de la spec. Sigue en pie NO mergear a `main` hasta
-  cerrar la spec (CI publicaría una 0.3.0 a medias).
-- **2026-08-03** — Feature 4 (T4) **APPROVED**, 7/7 criterios con evidencia. Veredicto en
-  `progress/review_spec-03-F4-feature4.md`; informe (reconstruido a partir del diff real) en
-  `progress/impl_spec-03-F4-feature4.md`. N2 verificada de forma independiente por el leader:
-  `pnpm build` ✅ · `pnpm ng lint ngx-products-3d` ✅ · `pnpm ng test ngx-products-3d` **120/120** ✅
-  (baseline 110) · `ng build products-3d-playground` ✅.
-  Tocados: `badge.config.ts` (`frontPlaneSize`, `backdropPosition`, `artPosition`,
-  `BADGE_RT_LAYER_GAP` privada; `planeSize` eliminado — cero hits en `projects/` y ausente del
-  `.d.ts`) y `badge-texture.component.ts` (quad opaco de `baseColor` SIN gate + plano del arte con
-  `transparent: true` encima, gate `hasValue()` y `colorSpace` sRGB conservados).
-  **Discriminancia reproducida por el REVISOR**, no aceptada de palabra: M1 (`frontPlaneSize→[5,5]`
-  + `artPosition.z` invertido) = 6 rojos exactos; y **dos mutaciones que el informe no demostraba**,
-  M2 (computed de `baseColor` fijado) = 2 rojos y M3 (guarda del warn) = 1 rojo. Cero aserciones
-  vacuas. Restauración desde copia previa verificada con `md5sum -c` de 22 ficheros + `git status
-  --porcelain` idéntico + 120/120 y lint re-ejecutados.
-  Pendientes derivados (8, 9 y 10) en la sección de arriba.
-- **2026-08-03** — T1-T4 **commiteadas** en `557cb0f` (rama `feature/blender-assets`, NO a `main`).
-  Decisión de Sergio para atacar la causa raíz de la incidencia: el working tree deja de ser el
-  único soporte de la spec.
-- **2026-08-03** — Feature 5 (T5) **APPROVED**, 6/6 criterios. Informe en
-  `progress/impl_spec-03-F4-feature5.md`, veredicto en `progress/review_spec-03-F4-feature5.md`.
-  N2: `build` ✅ · `lint` ✅ · `test` **133/133** ✅ (baseline 120, +13) · `ng build
-  products-3d-playground` ✅, verificada de forma independiente por leader y reviewer.
-  Tocados: `badge-texture.ts` (`isRatioWithinTolerance`, guarda de dimensiones no medibles → VÁLIDO,
-  documentada en tres sitios), `badge.config.ts` (`assetAspect` derivado de `BADGE_FRONT_FACE` +
-  `assetAspectTolerance: 0.01`) y `badge-texture.component.ts` (warn dev DENTRO del effect que ya
-  resolvía la textura — siguen siendo 3 effects, no 4 — bajo `ngDevMode`, con URL + esperado +
-  medido, sin bloquear el render).
-  **El reviewer volvió a añadir una mutación que el informe no demostraba** (M-D: acoplar `baseMap`
-  al ratio) → 1 rojo exacto ⇒ «avisa y sigue» queda anclado por test, no solo por lectura.
-  Aceptado como menor no bloqueante: `map.image as {width?, height?}` (`:210`) es aserción sobre un
-  `any` de three en vez de `unknown` + narrow; no introduce `any`, lint pasa, el porqué está
-  comentado.
-  Pendientes derivados (11, 12 y 13) arriba.
-- **2026-08-03** — Feature 5 commiteada. Feature 6 (`badge-text-anchoring`, T6) marcada
-  `in_progress` y lanzada: `BadgeTextSlot` cambia de forma, anclaje abajo-derecha y escala
-  UNIFORME. Es la que devuelve los textos al cuadro (fuera de encuadre desde T3). Baseline para
-  esta feature: **133/133**.
-  **Decisión de Sergio (2026-08-03)**: T5 y T6 se ejecutan **encadenadas, no en paralelo** — tocan
-  los mismos tres ficheros (`badge-texture.ts`, `badge.config.ts`, `badge-texture.component.ts`) y
-  dos implementers a la vez ahí es el mismo modo de fallo que costó T1/T3 en la incidencia de T4.
-- **2026-08-03** — Feature 6 (T6) **APPROVED**, 8/8 criterios. Informe en
-  `progress/impl_spec-03-F4-feature6.md`, veredicto en `progress/review_spec-03-F4-feature6.md`.
-  N2: `build` ✅ · `lint` ✅ · `test` **160/160** ✅ (baseline 133, **+27**) · `ng build
-  products-3d-playground` ✅. **Los textos vuelven al cuadro**: se cierra el estado intermedio que
-  T3 abrió.
-  Tocados: `badge.config.ts` (`BadgeTextSlot` nuevo, `BADGE_TEXT_LAYOUT` abajo-derecha,
-  `BADGE_TEXTURE.textLayerZ`), `badge-texture.ts` (`uvAnchorToRtPosition` + `alignOffsetX`) y
-  `badge-texture.component.ts` (método privado `fitTextMeshes`, **único escritor** del mesh).
-  **Auditoría de borrados (lo crítico de esta review): limpia.** Las 44 líneas eliminadas de `src/`
-  son código necesario por el cambio de forma; en los tres specs los `-` son **exactamente 4 y los 4
-  son `import`** — cero `it`/`expect`/`describe` borrados y cero tolerancias tocadas. El reviewer
-  comprobó en `ae35fa2` que ningún test viejo anclaba `position`/`rotation` ni el `maxWidth` global.
-  **Punto de tolerancias verificado, no aceptado de palabra**: la desviación es cuantización float32
-  de 1.3 (2.38e-8); comparar contra el ancho MEDIDO *aprieta* la aserción (delta 0, precisión 10).
-  **`textLayerZ` es pública por construcción**, no por decisión: `public-api.ts` hace `export *` de
-  `badge.config` y `architecture.md` §2 obliga a que la constante viva ahí (mismo caso que
-  `artPosition`/`backdropPosition` de T4). El `.d.ts` confirma superficie mínima.
-  Dos hallazgos del reviewer al backlog: **P21** (`height` depende de que soba siga usando el
-  `TextGeometry` de three-stdlib) y **P22/H2** (mutante superviviente: ningún test distingue el
-  `maxWidth` por slot del global). Pendientes derivados (14-20) arriba.
-- **2026-08-04** — Sergio aporta el asset: `badge_vitality.png`. Verificado por el leader leyendo la
-  cabecera PNG: **800×1125 = ratio 0.7111 (32:45 exacto), RGBA con 34.1% de píxeles totalmente
-  transparentes**. T7 **desbloqueada**.
-- **2026-08-04** — Feature 7 (T7) **APPROVED**, 9/9 criterios. Informe en
-  `progress/impl_spec-03-F4-feature7.md`, veredicto en `progress/review_spec-03-F4-feature7.md`.
-  Solo playground (`badge-demo.component.ts`, `badge-demo.routes.ts`); **cero ficheros de la lib
-  tocados**. N2: `build` ✅ · `lint` (lib y playground) ✅ · `test` **160/160** ✅ · `ng build
-  products-3d-playground` ✅.
-  **EL DEFECTO QUE ABRIÓ LA SPEC ESTÁ CERRADO**: el frente ya NO se deforma al redimensionar. El
-  reviewer lo remidió con un decodificador PNG **propio** (sin reutilizar los scripts del
-  implementer): 1280×900 vs 640×900 alineado por bbox = **219 px distintos y los 219 caen FUERA de
-  la tarjeta; dentro del arte, 0 píxeles**. El leader lo confirmó además a ojo en las capturas.
-  **Dos correcciones del reviewer al informe** (ninguna cambia el veredicto): (a) en 1800×700 la
-  desviación real es **0.36% centroide / 0.49% σU**, no el «<0.15%» reportado (el implementer
-  normalizaba a otro bbox); (b) los 10 frames idénticos prueban **estabilidad temporal, no ausencia
-  de z-fighting** — con cámara estática un z-fight no parpadea; lo que sostiene el punto es el zoom
-  ×6 (glifos sólidos, sin moteado).
-  **Norma nueva para futuras N3**: guardar el **log de consola**, no solo capturas. La parte «cero
-  warns en prod» no es reauditable sin él.
-  **Decisión sobre `violet` (cierra el pendiente 2, abierto desde T2)**: `baseColor: '#3b0764'`
-  explícito en vez de aceptar el negro ⇒ violet demuestra la rama sin `colors.clip` y ember la del
-  override. **Consecuencia a no perder**: el tipo `DemoTheme` obliga a `baseColor` en todo tema demo,
-  así que la demo ya **no enseña** el default negro; el pendiente 3 (CHANGELOG) queda como única
-  constancia.
-  Nuevos: **P23** al backlog, lista **«Para el ojo de Sergio»** arriba, y la decisión de contraste.
-- **2026-08-04** — Feature 8 (T8) **APPROVED**, 7/7 criterios. **ÚLTIMA de la spec.** Informe en
-  `progress/impl_spec-03-F4-feature8.md`, veredicto en `progress/review_spec-03-F4-feature8.md`.
-  Tocados: `README.md` publicado (contrato del asset frontal, `baseColor` con su reparto,
-  `BADGE_TEXT_LAYOUT` + «la trampa de la V», `baseTextures: {}` válido, nota de `colors.text`),
-  `CHANGELOG.md` (entrada **0.3.0 AMPLIADA, sin 0.4.0**) y `badge.config.ts` **solo JSDoc** (P20/H1).
-  N2: `build` ✅ · `lint` ✅ · `test` **160/160** ✅ · `ng build products-3d-playground` ✅ ·
-  README del `dist` **idéntico** al fuente · `package.json` intacto en 0.3.0.
-  **Verificación de exactitud del reviewer** (el riesgo de una feature de docs es publicar algo
-  falso): reconstruyó el delta de superficie pública **0.2.1 → HEAD** (`git show v0.2.1:…` contra el
-  `.d.ts` del dist) y confirmó que **todo lo retirado está en un Breaking y todo lo añadido está en
-  Añadido**, sin sobrantes ni faltantes; los internos tienen 0 declaraciones en el `.d.ts`. Cero hits
-  de API muerta en el README. **Sin sobre-afirmación**: cero menciones a tone mapping, z-fighting o
-  destello en el CHANGELOG (lo que sigue pendiente de ojo humano NO se declara verificado).
-  La trampa de la V verificada en el sentido CORRECTO: README `:329-338` dice borde **inferior**, y
-  `uvAnchorToRtPosition` (`badge-texture.ts:63-68`) devuelve `y = (v − 0.5) · face.height` ⇒ `v = 0`
-  → `−halfHeight`. Coinciden.
-  Nuevo backlog **P24**.
-
-## Estado de cierre de la spec (dictamen del reviewer de T8)
-
-- **Criterios sin cumplir en las features 1-8**: **ninguno**. Los ocho veredictos son APPROVED
-  (6/6, 6/6, 8/8, 7/7, 6/6, 8/8, 9/9, 7/7), sin una sola marca `[ ]`.
-- **Pendientes de esta sección sin destino**: **ninguno**. Los 20 están colocados — 1/8/9/11/14/15/16
-  ejecutados en la N3 de T7 (con residuo en «Para el ojo de Sergio»), 2 cerrado por T7,
-  3/7/10/12/17/18/19/20 cerrados por T8 y verificados uno a uno, 4/6 higiene fuera de spec, 5
-  absorbido por T4, 13 norma ya escrita. P21-P24 y H3 quedan en backlog.
-- **Bloqueos para mergear a `main`**, aparte de la N3 de Sergio: **la contabilidad de
-  `feature_list.json`** — las features **4-8 siguen en `in_progress`** pese a estar aprobadas y
-  commiteadas (solo 1-3 están `done`). El leader NO las marca por la regla dura de `CLAUDE.md`
-  («no marques features como done»): **pendiente de que lo haga Sergio o de que autorice al leader**.
-- **Spec archivable**: **todavía no**. Falta (a) marcar 4-8 `done` y (b) la firma visual de Sergio.
-  Ninguna de las dos toca `src/`.
+- Canto y dorso de la tarjeta: fuera de alcance en F4v2, solo se anotó lo que se ve.
