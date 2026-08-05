@@ -42,6 +42,7 @@ import { lerpTowards, spinCorrectedAngvelY } from './badge-stabilize';
 import { resolveClipColor } from './badge-theme';
 import { Products3dBadgeTexture } from './badge-texture.component';
 import {
+	bandRepeatFor,
 	BADGE_BAND,
 	BADGE_CARD_MODEL,
 	BADGE_DRAG,
@@ -191,20 +192,23 @@ interface BadgeGLTF {
 			undefined (loading o error), useMap=0 y meshline pinta el color plano (sin flash ni crash
 			con map roto); al resolver, useMap=1 y el shader muestrea el map. Si la textura falla se
 			emite un warn dev, ver bandTextureErrorEffect. repeat es un Vector2 en meshline; el renderer
-			v4 acepta la tupla de BADGE_BAND.repeat y hace repeat.set(...) con ella. El módulo de la X
-			no es un número redondo: sale de la derivación de aspecto documentada en esa constante.
-			RepeatWrapping se aplica en el effect del constructor.
+			v4 acepta la tupla de bandRepeat() y hace repeat.set(...) con ella. El módulo de la X no es
+			un número redondo: sale de la derivación de aspecto de bandRepeatFor, evaluada sobre el
+			aspecto REAL de la textura ya cargada. transparent deja pasar el alfa del map (el shader ya
+			lo multiplica dentro de diffuseColor): sin él, los píxeles a alfa 0 de un PNG con RGB (0,0,0)
+			pintarían la correa de negro. RepeatWrapping se aplica en el effect del constructor.
 		-->
 		<ngt-mesh>
 			<ngt-mesh-line-geometry #bandGeometry />
 			<ngt-mesh-line-material
 				[map]="bandMap()"
 				[useMap]="bandMap() ? 1 : 0"
-				[repeat]="band.repeat"
+				[repeat]="bandRepeat()"
 				[color]="bandColor()"
 				[resolution]="resolution()"
 				[lineWidth]="band.lineWidth"
 				[depthTest]="band.depthTest"
+				[transparent]="band.transparent"
 			/>
 		</ngt-mesh>
 	`,
@@ -296,6 +300,20 @@ export class Products3dBadgeScene {
 	 */
 	protected readonly gltfData = computed(() => resourceValueOrUndefined(this.gltf));
 	protected readonly bandMap = computed(() => resourceValueOrUndefined(this.bandTexture));
+
+	/**
+	 * Teselado de la textura de la correa, derivado del aspecto REAL de la textura del tema
+	 * (`bandRepeatFor`, spec-04 R5). El aspecto solo se conoce tras cargar la imagen, así que es un
+	 * `computed` sobre `bandMap()`: se recalcula una vez por textura, NO por frame (regla de cero
+	 * allocations de `docs/architecture.md` §4 — en `beforeRender` no pinta nada). Mientras el
+	 * recurso no resuelve (`useMap` = 0) o la imagen no expone dimensiones, la división da `NaN` y
+	 * `bandRepeatFor` degrada al aspecto de referencia: nunca un `NaN` en el uniform.
+	 */
+	protected readonly bandRepeat = computed<[number, number]>(() => {
+		const image = this.bandMap()?.image as { width?: number; height?: number } | undefined;
+
+		return bandRepeatFor((image?.width ?? 0) / (image?.height ?? 0));
+	});
 
 	private readonly store = injectStore();
 	private readonly physics = inject(NgtrPhysics);

@@ -78,27 +78,58 @@ export const BADGE_BAND = {
 	/** La correa se dibuja siempre encima; sin test de profundidad para evitar clipping con la tarjeta */
 	depthTest: false,
 	/**
-	 * Repetición de la textura de la correa (meshline `repeat`, un `Vector2`; el shader muestrea
-	 * `texture2D(map, vUV * repeat)`, con `vUV.x` a lo largo de la correa y `vUV.y` a lo ancho).
-	 * La Y (1) hace que el alto de la textura cubra exactamente el ancho de la correa.
-	 *
-	 * El MÓDULO de la X (3.383) es el número de teselas que mantiene el aspecto del arte sin
-	 * estirarlo, derivado (spec-03-F3, feature 14):
-	 * - Longitud de la correa = 3 rope joints × `BADGE_PHYSICS.segmentLength` (1) = **3 uds**
-	 *   (el rope joint es una distancia MÁXIMA: en reposo la cadena cuelga tensa).
-	 * - Ancho de la correa = **0.2217 uds**, NO `lineWidth`: con `sizeAttenuation` (default 1 de
-	 *   meshline) el shader suma el offset en espacio de CLIP (`normal.xy *= .5 * lineWidth`),
-	 *   de donde el ancho en mundo es `lineWidth * tan(fov/2)` = 1 × tan(12.5°) con
-	 *   `BADGE_CAMERA.fov` = 25 (constante con la distancia).
-	 * - Textura de referencia 4:1 (`band.jpg`, 1024×256) → una tesela debe medir 4 × 0.2217 =
-	 *   0.887 uds de largo ⇒ repeticiones = 3 / 0.887 = **3.383**.
-	 *
-	 * El SIGNO negativo invierte la U (orientación del arte del lanyard, spec-03 feature 4).
-	 * Recalcular si cambian `BADGE_CAMERA.fov`, `lineWidth`, `segmentLength` o el aspecto de la
-	 * textura del tema.
+	 * El arte de la correa lleva canal alfa (`band.png`). `MeshLineMaterial` extiende
+	 * `ShaderMaterial` y su shader ya multiplica el alfa del map dentro de `diffuseColor`, así que
+	 * basta con la propiedad estándar: sin ella los píxeles a alfa 0, que llevan RGB (0,0,0),
+	 * pintarían la correa de NEGRO en vez de dejar ver el color plano.
 	 */
-	repeat: [-3.383, 1] as [number, number],
+	transparent: true,
+	/**
+	 * Rope joints de la cadena (`fixed→j1→j2→j3`, ver `BADGE_LAYOUT`). La longitud de la correa
+	 * en unidades de mundo es este número × `BADGE_PHYSICS.segmentLength`, porque el rope joint es
+	 * una distancia MÁXIMA: en reposo la cadena cuelga tensa.
+	 */
+	ropeJoints: 3,
+	/**
+	 * Aspecto (ancho/alto) de la textura de correa de REFERENCIA: `band.jpg` del playground,
+	 * 1024×256 = 4:1. Solo se usa como fallback de `bandRepeatFor` cuando el aspecto real no es
+	 * medible (textura sin resolver, `image` sin dimensiones, 0 o `NaN`): el teselado degrada al
+	 * del arte de referencia en vez de escribir un `NaN` en el uniform, que dejaría la correa sin
+	 * textura y sin decir por qué.
+	 */
+	referenceTextureAspect: 4,
 } as const;
+
+/**
+ * Repetición de la textura de la correa (meshline `repeat`, un `Vector2`; el shader muestrea
+ * `texture2D(map, vUV * repeat)`, con `vUV.x` a lo largo de la correa y `vUV.y` a lo ancho), a
+ * partir del aspecto (ancho/alto) de la textura del tema. La Y (1) hace que el alto de la textura
+ * cubra exactamente el ancho de la correa.
+ *
+ * El MÓDULO de la X es el número de teselas que mantiene el aspecto del arte sin estirarlo
+ * (spec-03-F3 feature 14, derivado a mano entonces; spec-04 R5 lo convierte en esta fn):
+ * - Longitud de la correa = `BADGE_BAND.ropeJoints` (3) × `BADGE_PHYSICS.segmentLength` (1) = **3 uds**.
+ * - Ancho de la correa = **0.2217 uds**, NO `lineWidth`: con `sizeAttenuation` (default 1 de
+ *   meshline) el shader suma el offset en espacio de CLIP (`normal.xy *= .5 * lineWidth`), de donde
+ *   el ancho en mundo es `lineWidth * tan(fov/2)` = 1 × tan(12.5°) con `BADGE_CAMERA.fov` = 25
+ *   (constante con la distancia). `fov` está en GRADOS y `Math.tan` quiere radianes.
+ * - Una tesela mide `aspecto × ancho` de largo ⇒ repeticiones = `3 / (aspecto × 0.2217)`. Con el
+ *   aspecto de referencia 4:1 sale **3.383**, exactamente el valor que estaba precalculado a mano.
+ *
+ * El SIGNO negativo invierte la U (orientación del arte del lanyard, spec-03 feature 4) y se
+ * conserva siempre. Aspecto no medible / 0 / negativo / `NaN` → `BADGE_BAND.referenceTextureAspect`,
+ * NUNCA `NaN`.
+ */
+export function bandRepeatFor(textureAspect: number): [number, number] {
+	const aspect =
+		Number.isFinite(textureAspect) && textureAspect > 0
+			? textureAspect
+			: BADGE_BAND.referenceTextureAspect;
+	const bandWidth = BADGE_BAND.lineWidth * Math.tan((BADGE_CAMERA.fov * Math.PI) / 360);
+	const bandLength = BADGE_BAND.ropeJoints * BADGE_PHYSICS.segmentLength;
+
+	return [-(bandLength / (aspect * bandWidth)), 1];
+}
 
 /**
  * Colocación del modelo GLB dentro del rigid body de la tarjeta (spec-03-F3). Es el anclaje

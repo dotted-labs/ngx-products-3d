@@ -10,12 +10,44 @@
 `done`, 8 veredictos APPROVED, N3 firmada por Sergio el 2026-08-05). Bitácora en
 `progress/history.md`.
 
-**`spec-04` redactada y activada**, con las 7 tareas desglosadas en `feature_list.json`. **T1, T2 y
-T3 cerradas (`done`, APPROVED)**; T4–T7 en `pending`.
+**`spec-04` redactada y activada**, con las 7 tareas desglosadas en `feature_list.json`. **T1, T2, T3
+y T4 cerradas (`done`, APPROVED)**; T5–T7 en `pending`.
 
 Baseline heredado: `pnpm build` ✅ · `pnpm ng lint ngx-products-3d` ✅ ·
 `pnpm ng test ngx-products-3d` **160/160** ✅ · `pnpm ng build products-3d-playground` ✅.
 **El implementer debe revalidarlo antes de tocar nada** (§1 de `AGENTS.md`).
+
+## ✅ Cerrada: spec-04-T4 — `badge-band-repeat-derived` (feature `id: 4`)
+
+- **Estado**: **`done`** — **APPROVED** por el reviewer, sin cambios requeridos.
+  Veredicto: `progress/review_spec-04-T4.md` · Informe: `progress/impl_spec-04-T4.md`.
+  `feature_list.json` id 4 = `done`; T5–T7 siguen en `pending`. **Sin commitear**: lo hace el leader.
+- **Backlog**: el ítem «`BADGE_BAND.repeat` derivado del fov» **sale del backlog** — ya no es un
+  `-3.383` precalculado a mano, sino `bandRepeatFor(aspect)` derivado. `BADGE_BAND.repeat`
+  **desaparece de la API pública** a favor de `bandRepeatFor(aspect)`: breaking que documenta **T7**
+  en el CHANGELOG.
+- **Plan** (ejecutado):
+  1. Fn pura `bandRepeatFor(aspect)` en `badge.config.ts` derivada de `segmentLength`, `lineWidth` y
+     `fov`; `BADGE_BAND.repeat` (tupla literal `[-3.383, 1]`) desaparece. Constantes nuevas
+     `ropeJoints: 3` y `referenceTextureAspect: 4` (fallback), cero literales sueltos.
+  2. `computed` `bandRepeat()` en `badge-scene.component.ts` sobre `bandMap()` (lee
+     `image.width/height`), **no** en `beforeRender`; template `[repeat]="bandRepeat()"`.
+  3. `transparent` en `<ngt-mesh-line-material>` (vía `BADGE_BAND.transparent`), conservando
+     `depthTest: false`.
+  4. N1: 6 tests de `bandRepeatFor` (ancla `−3.383`, derivación, aspecto 16, signo, fallback sin
+     `NaN`) + 5 en la escena (aspecto real 8:1, reteselado, dos fallbacks, material).
+  5. Discriminancia con 4 mutaciones temporales revertidas por copia previa + `md5sum -c` (norma 1);
+     una de ellas obligó a cambiar el asset de un test que sobrevivía por coincidencia.
+- **Criterios de aceptación aplicables** (copiados de `feature_list.json` id 4): `bandRepeatFor(4)` =
+  −3.383 · testeada también con 16 y con `0`/`NaN`/no medible → fallback sin `NaN` · signo siempre
+  negativo · `repeat` recalculado al resolver la textura (`computed`, nunca `beforeRender`) ·
+  material con `transparent` y `depthTest: false` · ningún literal `3.383` en el código ·
+  `build` / `lint` / `test` verdes.
+- **Verificación**: `pnpm build` ✅ · `pnpm ng lint ngx-products-3d` ✅ ·
+  `pnpm ng test ngx-products-3d` **188/188** ✅ (baseline de entrada 178/178) ·
+  `pnpm ng build products-3d-playground` ✅.
+- **Fuera de alcance explícito**: repunte de `band.jpg` → `band.png` y `git rm` (**T5**, la demo
+  sigue en 404 a propósito), playground y N3 visual (T6), README/CHANGELOG (T7), física/GLB/escena RT.
 
 ## ✅ Cerrada: spec-04-T2 — `badge-text-bottom-left` (feature `id: 2`)
 
@@ -222,5 +254,7 @@ abierta**: la 0.3.0 acumula ya los breaking de tres specs (F3, F4v2 y ésta).
 
 - **P22** (mutante superviviente: ningún test distingue el `maxWidth` **por slot** del global) → T2,
   **cerrado y APPROVED** (`progress/review_spec-04-T2.md`). Fuera del backlog.
-- **`BADGE_BAND.repeat` derivado** (hoy `-3.383` precalculado a mano, obsoleto en silencio si alguien
-  toca el fov) → T4.
+- **`BADGE_BAND.repeat` derivado** (era `-3.383` precalculado a mano, obsoleto en silencio si alguien
+  tocaba el fov) → T4, **cerrado y APPROVED** (`progress/review_spec-04-T4.md`). Fuera del backlog:
+  ahora se deriva con `bandRepeatFor(aspect)`, y `BADGE_BAND.repeat` desaparece de la API pública
+  (breaking a documentar en el CHANGELOG en **T7**).

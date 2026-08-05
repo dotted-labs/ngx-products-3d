@@ -1,4 +1,7 @@
 import {
+	bandRepeatFor,
+	BADGE_BAND,
+	BADGE_CAMERA,
 	BADGE_FRONT_FACE,
 	BADGE_PHYSICS,
 	BADGE_TEXT_LAYOUT,
@@ -210,5 +213,64 @@ describe('BADGE_TEXTURE map transform', () => {
 		expect(offsetV + 1 * repeatV).toBe(0);
 		expect(offsetU + 0 * repeatU).toBe(0);
 		expect(offsetU + 1 * repeatU).toBe(1);
+	});
+});
+
+describe('bandRepeatFor', () => {
+	/**
+	 * ANCLA de la derivación: `-3.383` es el valor que estuvo precalculado A MANO en
+	 * `BADGE_BAND.repeat` desde spec-03-F3 (con el arte de referencia 4:1, `band.jpg` 1024×256).
+	 * Fijado como literal a propósito: es independiente de la config, así que si la fn deja de
+	 * reproducirlo, la derivación se inventó algo.
+	 */
+	const HAND_DERIVED_REFERENCE_REPEAT_X = -3.383;
+
+	it('reproduces the hand-derived -3.383 for the 4:1 reference artwork', () => {
+		expect(bandRepeatFor(4)[0]).toBeCloseTo(HAND_DERIVED_REFERENCE_REPEAT_X, 3);
+	});
+
+	it('derives the tiling from the camera fov and the band geometry, not from a literal', () => {
+		// Misma invariante geométrica, escrita desde las constantes: con sizeAttenuation (default de
+		// meshline) el ancho de la correa en unidades de mundo es lineWidth * tan(fov/2), NO
+		// lineWidth; el largo son los rope joints de la cadena. Discrimina un fov o un lineWidth
+		// cambiados sin recalcular (que era justo lo que se degradaba en silencio antes).
+		const bandWidth = BADGE_BAND.lineWidth * Math.tan((BADGE_CAMERA.fov * Math.PI) / 360);
+		const bandLength = BADGE_BAND.ropeJoints * BADGE_PHYSICS.segmentLength;
+
+		expect(bandRepeatFor(4)[0]).toBeCloseTo(-(bandLength / (4 * bandWidth)), 12);
+		expect(bandRepeatFor(16)[0]).toBeCloseTo(-(bandLength / (16 * bandWidth)), 12);
+	});
+
+	it('tiles a 16:1 strip four times less than a 4:1 one (same band, longer artwork)', () => {
+		// El aspecto entra de verdad en la cuenta: cuádruple de tesela, cuarto de repeticiones.
+		expect(bandRepeatFor(16)[0]).toBeCloseTo(bandRepeatFor(4)[0] / 4, 12);
+		expect(bandRepeatFor(16)[0]).toBeCloseTo(-0.846, 3);
+	});
+
+	it('always keeps the U inverted (negative X) and the V untiled (exactly 1)', () => {
+		// El signo negativo es la inversión de la U (orientación del arte del lanyard, spec-03
+		// feature 4): no depende del asset y no se pierde en ningún camino, ni en el de fallback.
+		for (const aspect of [0.5, 1, 4, 16, 1024, 0, -4, Number.NaN, Number.POSITIVE_INFINITY]) {
+			const [x, y] = bandRepeatFor(aspect);
+			expect(x).toBeLessThan(0);
+			expect(y).toBe(1);
+		}
+	});
+
+	it('falls back to the reference aspect for unmeasurable aspects, never NaN', () => {
+		// Un NaN en el uniform deja la correa sin textura sin decir por qué: 0, NaN, negativo o
+		// infinito degradan al teselado del arte de referencia.
+		const reference = bandRepeatFor(BADGE_BAND.referenceTextureAspect);
+
+		for (const aspect of [0, -4, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+			expect(bandRepeatFor(aspect)).toEqual(reference);
+			expect(Number.isNaN(bandRepeatFor(aspect)[0])).toBe(false);
+		}
+		// El fallback es el valor de referencia de siempre, no un cero disfrazado.
+		expect(reference[0]).toBeCloseTo(HAND_DERIVED_REFERENCE_REPEAT_X, 3);
+	});
+
+	it('keeps BADGE_BAND.referenceTextureAspect at the 4:1 of the reference artwork', () => {
+		expect(BADGE_BAND.referenceTextureAspect).toBe(1024 / 256);
 	});
 });

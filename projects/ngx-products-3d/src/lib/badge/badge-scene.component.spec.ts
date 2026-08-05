@@ -69,6 +69,7 @@ import type {
 } from '../types';
 import { Products3dBadgeScene } from './badge-scene.component';
 import {
+	bandRepeatFor,
 	BADGE_BAND,
 	BADGE_BASE_COLOR,
 	BADGE_CAMERA,
@@ -91,7 +92,10 @@ const gltfMock = vi.hoisted(() => ({ urls: [] as string[], data: undefined as un
 // La correa lee su textura vía textureResource. Se CAPTURA la fn de entrada (no se invoca en
 // construcción: `theme` es un input y aún no tiene valor → NG0950 si se lee eager, a diferencia
 // del gltf que deriva la URL de un inject disponible ya). Los tests la invocan tras setInput.
-const textureMock = vi.hoisted(() => ({ inputs: [] as (() => string)[] }));
+// `data` permite simular la textura YA resuelta (los tests del teselado solo necesitan `image`
+// con dimensiones: el aspecto sale de ahí). Por defecto `undefined` = recurso sin resolver; se
+// resetea en el beforeEach para no filtrarse entre tests.
+const textureMock = vi.hoisted(() => ({ inputs: [] as (() => string)[], data: undefined as unknown }));
 // El componente lee los recursos vía el API NO-lanzante (hasValue()/status() + value()) para no
 // romper el render si una URL falla. El mock expone las tres: hasValue()=false + status()='loading'
 // simulan "recurso sin resolver" (value()=undefined) → gltfData()/bandMap() dan undefined (sin
@@ -108,7 +112,11 @@ vi.mock('angular-three-soba/loaders', () => ({
 	},
 	textureResource: (input: () => string) => {
 		textureMock.inputs.push(input);
-		return { value: () => undefined, hasValue: () => false, status: () => 'loading' };
+		return {
+			value: () => textureMock.data,
+			hasValue: () => textureMock.data !== undefined,
+			status: () => (textureMock.data === undefined ? 'loading' : 'resolved'),
+		};
 	},
 }));
 
@@ -122,6 +130,7 @@ interface SceneInternals {
 	bandTexture: { value: () => unknown };
 	gltfData: () => unknown;
 	bandMap: () => unknown;
+	bandRepeat: () => [number, number];
 	materialOpts: () => BadgePhysicalMaterialOptions;
 	renderTextureOptions: {
 		width: number;
@@ -235,9 +244,10 @@ function clipMaterialOf(data: TestGltf): MeshStandardMaterial {
 
 describe('Products3dBadgeScene', () => {
 	beforeEach(() => {
-		// Por defecto el GLB queda SIN resolver (los tests del tinte lo sobrescriben): así el
-		// estado del mock no se filtra de un test a otro.
+		// Por defecto el GLB y la textura de la correa quedan SIN resolver (los tests del tinte y
+		// del teselado los sobrescriben): así el estado de los mocks no se filtra de un test a otro.
 		gltfMock.data = undefined;
+		textureMock.data = undefined;
 	});
 
 	it("defaults cardBodyType to 'dynamic' (kinematicPosition switch belongs to the drag feature)", () => {
@@ -424,16 +434,52 @@ describe('Products3dBadgeScene', () => {
 		expect(internalsOf(fixture).band).toBe(BADGE_BAND);
 	});
 
-	it('drives the band texture repeat from BADGE_BAND.repeat (no magic numbers)', () => {
+	it('derives the band texture repeat from the REAL aspect of the resolved texture', () => {
+		// El aspecto solo se conoce tras cargar la imagen: el computed lee image.width/height de la
+		// textura ya resuelta. Se usa un asset 8:1 a propósito, DISTINTO del de referencia: así el
+		// test cae si el componente ignora la textura y se queda en el fallback.
+		textureMock.data = { image: { width: 2048, height: 256 } };
 		const fixture = createScene();
 
-		// El template bindea [repeat]="band.repeat"; la tupla vive en config, no en el componente.
-		expect(internalsOf(fixture).band.repeat).toBe(BADGE_BAND.repeat);
+		expect(internalsOf(fixture).bandRepeat()).toEqual(bandRepeatFor(2048 / 256));
+		expect(internalsOf(fixture).bandRepeat()).not.toEqual(
+			bandRepeatFor(BADGE_BAND.referenceTextureAspect),
+		);
+	});
+
+	it('retiles when the artwork aspect changes (a 16:1 strip is not tiled like a 4:1 one)', () => {
+		// Discriminante frente a un repeat fijo: con el mismo componente, otro asset → otro teselado.
+		textureMock.data = { image: { width: 784, height: 49 } };
+		const fixture = createScene();
+
+		const [tiles] = internalsOf(fixture).bandRepeat();
+		expect(tiles).toBeCloseTo(bandRepeatFor(784 / 49)[0], 6);
+		expect(tiles).not.toBeCloseTo(bandRepeatFor(1024 / 256)[0], 2);
+	});
+
+	it('falls back to the reference tiling while the band texture is unresolved (never NaN)', () => {
+		// useMap = 0: no hay imagen que medir. El uniform debe seguir siendo un número, o la correa
+		// se queda sin textura al resolver sin decir por qué.
+		const fixture = createScene();
+
+		const repeat = internalsOf(fixture).bandRepeat();
+		expect(repeat).toEqual(bandRepeatFor(BADGE_BAND.referenceTextureAspect));
+		expect(Number.isNaN(repeat[0])).toBe(false);
+	});
+
+	it('falls back when the resolved texture exposes no measurable dimensions', () => {
+		// Textura resuelta pero sin image (o con dimensiones a 0): la división daría 0/0 = NaN.
+		textureMock.data = { image: undefined };
+		const fixture = createScene();
+
+		expect(internalsOf(fixture).bandRepeat()).toEqual(
+			bandRepeatFor(BADGE_BAND.referenceTextureAspect),
+		);
 	});
 
 	it('tiles the band texture preserving the aspect ratio of a 4:1 lanyard artwork', () => {
 		// Invariante geométrica entre constantes independientes (derivación completa en
-		// BADGE_BAND.repeat): con sizeAttenuation (default de meshline) el ancho de la correa en
+		// bandRepeatFor): con sizeAttenuation (default de meshline) el ancho de la correa en
 		// unidades de mundo es lineWidth * tan(fov/2), NO lineWidth; el largo son los 3 rope
 		// joints de la cadena. Una tesela debe medir `aspecto` veces el ancho para no estirarse.
 		const bandWidth = BADGE_BAND.lineWidth * Math.tan((BADGE_CAMERA.fov * Math.PI) / 360);
@@ -441,10 +487,23 @@ describe('Products3dBadgeScene', () => {
 		const textureAspect = 1024 / 256; // band.jpg del playground
 		const tiles = bandLength / (textureAspect * bandWidth);
 
-		expect(Math.abs(BADGE_BAND.repeat[0])).toBeCloseTo(tiles, 2);
+		textureMock.data = { image: { width: 1024, height: 256 } };
+		const fixture = createScene();
+		const repeat = internalsOf(fixture).bandRepeat();
+
+		expect(Math.abs(repeat[0])).toBeCloseTo(tiles, 2);
 		// Signo negativo = U invertida (orientación del arte); la V no se tesela a lo ancho.
-		expect(BADGE_BAND.repeat[0]).toBeLessThan(0);
-		expect(BADGE_BAND.repeat[1]).toBe(1);
+		expect(repeat[0]).toBeLessThan(0);
+		expect(repeat[1]).toBe(1);
+	});
+
+	it('declares transparent on the band material without dropping depthTest: false', () => {
+		// Sin transparent, los píxeles a alfa 0 del PNG (RGB 0,0,0) pintan la correa de negro.
+		// depthTest: false se conserva: la correa se dibuja siempre encima de la tarjeta.
+		const fixture = createScene();
+
+		expect(internalsOf(fixture).band.transparent).toBe(true);
+		expect(internalsOf(fixture).band.depthTest).toBe(false);
 	});
 
 	it('loads the band texture from theme.bandTextureUrl (no hardcoded URL)', () => {
