@@ -10,7 +10,7 @@ import {
 import { BADGE_FRONT_FACE, BADGE_TEXT_LAYOUT, BADGE_TEXTURE } from './badge.config';
 
 const THEME: Products3dBadgeTheme = {
-	bandTextureUrl: 'assets/band.jpg',
+	bandTextureUrl: 'assets/band.png',
 	baseTextures: {
 		gold: 'assets/base-gold.png',
 		silver: 'assets/base-silver.png',

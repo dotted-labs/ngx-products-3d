@@ -30,7 +30,7 @@ Estado real del working tree (verificado el 2026-08-05, después de que Sergio m
 |---|---|---|
 | `band.jpg` | **borrado**, pero sigue **trackeado en git** | `bandTextureUrl` → `/assets/band.jpg` ⇒ **404** |
 | `font.json` | **borrado por Sergio**, trackeado en git | `fontUrl` → `/assets/font.json` ⇒ **404** |
-| `band.png` | ✅ entregado, **784 × 49** (ya girado) | nadie |
+| `band.png` | ✅ entregado, **725 × 70** (ya girado) — *revisado por Sergio el 2026-08-06 13:17:48; la primera entrega era 784 × 49* | nadie |
 | `Ballega.otf` | ✅ entregado, 70 736 B | nadie |
 
 Es decir: **la demo arranca hoy sin correa y sin textos**, degradando a color plano y a sin-texto con
@@ -41,22 +41,29 @@ sendos warns dev (los modos degradados diseñados en `badge-scene.component.ts:4
 
 `band.jpg` y `band.png` no son intercambiables:
 
-| | `band.jpg` (borrado) | `band.png` (entregado) |
+| | `band.jpg` (borrado) | `band.png` (vigente) |
 |---|---|---|
-| Dimensiones | 1024 × 256 | **784 × 49** |
-| Aspecto | **4:1** | **16:1** |
+| Dimensiones | 1024 × 256 | **725 × 70** |
+| Aspecto | **4:1** | **~10.36:1** |
 | Canal alfa | no | **sí — arte blanco sobre transparente** |
 | Arte | espiga neutra tileable | marcas blancas espaciadas a lo largo de la tira |
 
 > Sergio ya lo entregó **girado a horizontal** (eje largo = longitud de la correa), que era la
 > decisión cerrada. La primera versión que dejó era 49 × 784 (vertical) y no habría servido: ver
 > el punto 3 de abajo.
+>
+> **El asset se ha revisado dos veces.** Las cifras de arriba son las del fichero **vigente**
+> (725 × 70, blob `2cd2b6ad`, 2026-08-06 13:17:48). La entrega anterior era **784 × 49** (aspecto 16),
+> y es la que citan las notas de `progress/` escritas antes de esa hora. El diagnóstico cualitativo de
+> abajo **no cambia** con la revisión: los tres defectos dependen de que el aspecto **no sea 4:1** y
+> de que el arte **tenga alfa**, y ambas cosas siguen siendo ciertas.
 
 De ahí **tres** defectos que aparecerían al repuntar la URL sin tocar nada más:
 
 1. **Arte con el teselado equivocado.** `BADGE_BAND.repeat = [-3.383, 1]` (`badge.config.ts:100`)
-   está derivado **a mano** del aspecto 4:1. Con 16:1 la derivación deja de valer y el arte sale
-   comprimido ×4.
+   está derivado **a mano** del aspecto 4:1. Con un aspecto distinto la derivación deja de valer y el
+   arte sale comprimido en proporción (×4 con el 16:1 de la primera entrega, ×2.6 con el 10.36:1
+   vigente).
 2. **Correa negra.** Los píxeles a alfa 0 del PNG llevan RGB `(0,0,0)`, y el material de la correa
    no declara `transparent` ⇒ el shader multiplica por negro y pinta la correa de negro donde no
    hay arte.
@@ -233,18 +240,23 @@ anclaje, y es lo que demuestra que la derivación no inventa nada.
 multiplica el alfa del map dentro de `diffuseColor`. `depthTest: false` **se mantiene** (la correa se
 dibuja siempre encima, para no clipear con la tarjeta).
 
-**(d) Consecuencia de la tesela — hay que mirarla en la N3.** La fórmula es agnóstica al asset, pero
-con el `band.png` entregado (**784 × 49, aspecto 16**) da:
+**(d) Consecuencia de la tesela — hay que mirarla en la N3.** La fórmula es agnóstica al asset. Con el
+`band.png` **vigente** (**725 × 70, aspecto 10.3571**, sustituido por Sergio el 2026-08-06 a las
+13:17:48) da:
 
 ```
-repeat = −(3 / (16 × 0.22169)) = −0.846
+repeat = −(3 / (10.3571 × 0.22169)) = −1.3066
 ```
 
-**Menos de una tesela**: se vería ~85 % del arte y se cortaría por el extremo. No es un fallo (la
-correa se renderiza igual) pero probablemente no es lo que Sergio quiere ver. Si el patrón debe
-repetirse varias veces, la tesela tiene que ser **más corta**: **196 × 49** (aspecto 4:1) reproduce
-exactamente el teselado que había con `band.jpg`, y **98 × 49** (2:1) lo duplica. **Se decide viendo
-el playground en la N3**, no antes — y el arreglo, si hace falta, es de **asset**, no de código.
+**1,31 teselas**: el arte se repite y algo más de un cuarto de tesela vuelve a empezar por el extremo.
+Lo que hay que mirar en la N3 ya **no** es si falta tesela, sino si **la costura del tileado canta** y
+si el corte del extremo se ve. El arreglo, si hace falta, sigue siendo de **asset**, no de código.
+
+> **Histórico, para no releer mal las notas viejas.** El primer `band.png` entregado era **784 × 49**
+> (aspecto 16) y daba `repeat = −0.846`, o sea **menos de una tesela**: se veía ~85 % del arte y se
+> cortaba. Ese era el «fleco abierto de la correa» que arrastran `progress/` y las notas previas, y
+> **ya no aplica**: el asset de 725 × 70 lo cierra por sí solo. La propuesta de tesela más corta
+> (196 × 49) queda igualmente **descartada**.
 
 ### R6 — Repuntar `band.jpg` → `band.png`
 
@@ -371,7 +383,7 @@ En `projects/products-3d-playground/public/assets/`. **Ninguno bloquea: están l
 | Fichero | Estado |
 |---|---|
 | `Ballega.otf` | ✅ **Entregado** (70 736 B, 176 glifos, parseo verificado de punta a punta) |
-| `band.png` | ✅ **Entregado y ya girado** (784 × 49, aspecto 16:1, con alfa). Único fleco: da `repeat ≈ −0.846`, menos de una tesela — ver R5(d), se decide en la N3 |
+| `band.png` | ✅ **Entregado y ya girado** — **revisión vigente: 725 × 70, aspecto ~10.36:1, RGBA** (3 661 B, blob `2cd2b6ad`, 2026-08-06 13:17:48). Da `repeat = −1.3066` (1,31 teselas): el fleco de «menos de una tesela» era de la entrega anterior de 784 × 49 y **ya no aplica** — ver R5(d) |
 | `font.json` | ❌ **Borrado por Sergio.** `Ballega.otf` pasa a ser la fuente única de la demo. El camino de typeface JSON queda cubierto por el test N1 de passthrough, no por un asset |
 
 Ficheros que se quedan como estaban: `badge_vitality.png` (arte del frente, 800 × 1125 = 32:45),

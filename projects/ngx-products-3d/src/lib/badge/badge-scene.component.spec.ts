@@ -156,7 +156,7 @@ const MEMBER: BadgeMemberData = {
 };
 
 const THEME: Products3dBadgeTheme = {
-	bandTextureUrl: 'assets/band.jpg',
+	bandTextureUrl: 'assets/band.png',
 	baseTextures: { gold: 'assets/gold.png' },
 	defaultBaseTextureUrl: 'assets/default.png',
 	fontUrl: 'assets/font.json',
@@ -448,13 +448,15 @@ describe('Products3dBadgeScene', () => {
 	});
 
 	it('retiles when the artwork aspect changes (a 16:1 strip is not tiled like a 4:1 one)', () => {
-		// Discriminante frente a un repeat fijo: con el mismo componente, otro asset → otro teselado.
+		// Discriminante frente a un repeat fijo: con el mismo componente, otro arte → otro teselado.
+		// 784 × 49 es un 16:1 cualquiera, no las dimensiones de ningún fichero; lo único que importa
+		// es que su aspecto difiera del 4:1 de referencia para que el fallback no pueda colarse.
 		textureMock.data = { image: { width: 784, height: 49 } };
 		const fixture = createScene();
 
 		const [tiles] = internalsOf(fixture).bandRepeat();
 		expect(tiles).toBeCloseTo(bandRepeatFor(784 / 49)[0], 6);
-		expect(tiles).not.toBeCloseTo(bandRepeatFor(1024 / 256)[0], 2);
+		expect(tiles).not.toBeCloseTo(bandRepeatFor(BADGE_BAND.referenceTextureAspect)[0], 2);
 	});
 
 	it('falls back to the reference tiling while the band texture is unresolved (never NaN)', () => {
@@ -482,12 +484,15 @@ describe('Products3dBadgeScene', () => {
 		// bandRepeatFor): con sizeAttenuation (default de meshline) el ancho de la correa en
 		// unidades de mundo es lineWidth * tan(fov/2), NO lineWidth; el largo son los 3 rope
 		// joints de la cadena. Una tesela debe medir `aspecto` veces el ancho para no estirarse.
+		// El arte de referencia 4:1 es el que ancla el -3.383 histórico; aquí es solo un aspecto de
+		// entrada, no las dimensiones de ningún fichero (por eso se escribe como aspecto, y el alto
+		// es arbitrario). Que un arte más alargado se tesele distinto lo cubre el test de arriba.
 		const bandWidth = BADGE_BAND.lineWidth * Math.tan((BADGE_CAMERA.fov * Math.PI) / 360);
 		const bandLength = 3 * BADGE_PHYSICS.segmentLength;
-		const textureAspect = 1024 / 256; // band.jpg del playground
+		const textureAspect = 4;
 		const tiles = bandLength / (textureAspect * bandWidth);
 
-		textureMock.data = { image: { width: 1024, height: 256 } };
+		textureMock.data = { image: { width: textureAspect * 128, height: 128 } };
 		const fixture = createScene();
 		const repeat = internalsOf(fixture).bandRepeat();
 

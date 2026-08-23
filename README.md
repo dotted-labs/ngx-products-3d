@@ -27,7 +27,7 @@ export const badgeRoute: Route = {
 		provideNgtRenderer(),
 		provideProducts3d({ cardModelUrl: '/assets/3d/membresia.glb' }),
 		provideProducts3dBadgeTheme({
-			bandTextureUrl: '/assets/3d/band.jpg',
+			bandTextureUrl: '/assets/3d/band.png',
 			baseTextures: {
 				gold: '/assets/3d/base-gold.jpg',
 				silver: '/assets/3d/base-silver.jpg',

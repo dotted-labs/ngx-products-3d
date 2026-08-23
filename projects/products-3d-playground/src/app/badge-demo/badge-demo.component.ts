@@ -24,7 +24,7 @@ const WRONG_RATIO_ART_URL = '/assets/base-wrong-ratio.png';
 // debe mantenerse IDÉNTICO al del provider para que ambas fuentes no diverjan.
 const DEMO_THEMES: Record<DemoThemeKey, DemoTheme> = {
 	violet: {
-		bandTextureUrl: '/assets/band.jpg',
+		bandTextureUrl: '/assets/band.png',
 		baseTextures: {
 			gold: FRONT_ART_URL,
 			silver: WRONG_RATIO_ART_URL,
@@ -37,9 +37,9 @@ const DEMO_THEMES: Record<DemoThemeKey, DemoTheme> = {
 		baseColor: '#3b0764',
 	},
 	ember: {
-		// Misma correa que violet: band.jpg es neutra/tintable, la diferencia entre
-		// temas la marca colors.band (no hay una textura de correa por tema).
-		bandTextureUrl: '/assets/band.jpg',
+		// Misma correa que violet: band.png es arte blanco sobre alfa (neutro/tintable), la
+		// diferencia entre temas la marca colors.band (no hay una textura de correa por tema).
+		bandTextureUrl: '/assets/band.png',
 		// Sin entradas por tier a propósito: TODOS los tiers caen en defaultBaseTextureUrl.
 		// Es el camino de fallback de la lib y, de paso, el tema sin ningún asset de ratio
 		// inválido (cero warns en consola mientras esté seleccionado).

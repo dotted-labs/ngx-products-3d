@@ -15,7 +15,7 @@ export const badgeDemoRoutes: Routes = [
 			// provider (resolvedTheme no hace merge). Este tema debe mantenerse IDÉNTICO al
 			// tema 'violet' de DEMO_THEMES en badge-demo.component.ts para no divergir.
 			provideProducts3dBadgeTheme({
-				bandTextureUrl: '/assets/band.jpg',
+				bandTextureUrl: '/assets/band.png',
 				baseTextures: {
 					// badge_vitality.png: 800 × 1125 (ratio 32:45) con alfa.
 					gold: '/assets/badge_vitality.png',

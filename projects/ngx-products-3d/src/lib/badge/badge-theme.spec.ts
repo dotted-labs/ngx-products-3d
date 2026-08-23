@@ -4,7 +4,7 @@ import { BADGE_BASE_COLOR } from './badge.config';
 
 function makeTheme(overrides: Partial<Products3dBadgeTheme> = {}): Products3dBadgeTheme {
 	return {
-		bandTextureUrl: 'assets/band.jpg',
+		bandTextureUrl: 'assets/band.png',
 		baseTextures: { gold: 'assets/gold.png' },
 		defaultBaseTextureUrl: 'assets/default.png',
 		fontUrl: 'assets/font.json',

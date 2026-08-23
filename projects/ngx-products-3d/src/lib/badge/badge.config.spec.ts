@@ -219,7 +219,7 @@ describe('BADGE_TEXTURE map transform', () => {
 describe('bandRepeatFor', () => {
 	/**
 	 * ANCLA de la derivación: `-3.383` es el valor que estuvo precalculado A MANO en
-	 * `BADGE_BAND.repeat` desde spec-03-F3 (con el arte de referencia 4:1, `band.jpg` 1024×256).
+	 * `BADGE_BAND.repeat` desde spec-03-F3, cuando el arte de correa era 4:1 (asset ya retirado).
 	 * Fijado como literal a propósito: es independiente de la config, así que si la fn deja de
 	 * reproducirlo, la derivación se inventó algo.
 	 */

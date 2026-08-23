@@ -1,7 +1,7 @@
 # Sesión actual
 
-- **Fecha**: 2026-08-05
-- **Spec**: `docs/specs/active/spec-04-typography-band-assets.md` (**activa, sin empezar**)
+- **Fecha**: 2026-08-06
+- **Spec**: `docs/specs/active/spec-04-typography-band-assets.md` (**activa, T1–T4 cerradas**)
 - **Rol**: leader
 
 ## Estado
@@ -16,6 +16,88 @@ y T4 cerradas (`done`, APPROVED)**; T5–T7 en `pending`.
 Baseline heredado: `pnpm build` ✅ · `pnpm ng lint ngx-products-3d` ✅ ·
 `pnpm ng test ngx-products-3d` **160/160** ✅ · `pnpm ng build products-3d-playground` ✅.
 **El implementer debe revalidarlo antes de tocar nada** (§1 de `AGENTS.md`).
+
+## ⚠️ El asset `band.png` se revisó a mitad de T5 — leer antes que nada
+
+**Sergio sustituyó `band.png` el 2026-08-06 a las 13:17:48**, con T5 ya implementada y verificada. Lo
+detectó el reviewer de T5 comparando índice y disco; lo confirmé yo leyendo la cabecera IHDR.
+
+| | Primera entrega (RETIRADA) | **Vigente** |
+|---|---|---|
+| Dimensiones | 784 × 49 | **725 × 70** |
+| Aspecto | 16 | **10.3571** |
+| Bytes / blob | 3 835 | **3 661 / `2cd2b6ad`** |
+| `repeat` derivado | −0.846 (**menos de una tesela**) | **−1.3066 (1,31 teselas)** |
+
+- **Asset canónico = el del disco.** El líder ya hizo `git add`: índice y working tree coinciden. El
+  blob anterior quedó preservado fuera del repo antes de sobrescribir el índice (no se perdió nada).
+- **El «fleco de la correa» está CERRADO por el propio asset**, no por una decisión pendiente: ya no
+  se ve menos de una tesela. La propuesta de tesela más corta (196 × 49) queda **descartada**. Lo que
+  se mira en la N3 de T6 pasa a ser si **la costura del tileado canta**.
+- **Cualquier nota anterior a esa hora que diga 784 × 49 o −0.846 está caduca**, incluidos tramos de
+  este mismo fichero, de `progress/impl_spec-04-T5.md` y de la spec. Ya están corregidos
+  `feature_list.json` (T6) y la spec (R5(d), tabla de diagnóstico y tabla de Assets).
+- **Lección aplicada**: T5 quita de `badge.config.ts` la cita de dimensiones del asset de demo. Una
+  constante de la lib **no debe documentar el tamaño de un fichero del playground** — ese dato se
+  pudrió en horas, y viajaba en los `.d.ts` publicados de la 0.3.0.
+
+## 🔄 En curso: spec-04-T5 — `badge-band-asset-swap` (feature `id: 5`)
+
+- **Estado**: **CHANGES_REQUESTED** → ronda de correcciones en marcha.
+  Veredicto: `progress/review_spec-04-T5.md` · Informe: `progress/impl_spec-04-T5.md`.
+  El trabajo del implementer era **correcto y estaba verificado al entregarlo**; lo bloqueó el cambio
+  de asset externo y posterior de arriba, más una cita de dimensiones derivada de él.
+- **Verificado por el líder** sobre la entrega inicial (norma 7): `lint` ✅ ·
+  `test` **188/188** ✅ · `ng build products-3d-playground` ✅ · índice de git con el reparto correcto
+  (`band.jpg` y `font.json` fuera; `band.png` y `Ballega.otf` dentro) · barrido sin `band.jpg` vivo.
+  El reviewer revalidó los cuatro por su cuenta + checks de `dist` (sin deps fantasma, README
+  publicado con `band.png`).
+- **Correcciones pedidas**: (1) asset canónico — **hecho por el líder**; (2) quitar `784×49` del JSDoc
+  público de `BADGE_BAND.referenceTextureAspect`; (3) misma limpieza en el comentario de
+  `badge-scene.component.spec.ts:452`; (4) revalidar los cuatro comandos y actualizar el informe.
+- **Dictámenes del reviewer que zanjan dudas abiertas**:
+  - `textureAspect = 512 / 128` es **honesto** (input arbitrario, `tiles` derivado a mano de
+    constantes independientes) y **no debe** derivarse de `BADGE_BAND.referenceTextureAspect`: eso
+    haría **estructuralmente invisible** el mutante «ignoro la imagen y devuelvo siempre el fallback».
+    La asimetría con el test hermano está justificada: allí el 4 significa «el valor del fallback»,
+    aquí «un 4:1 cualquiera».
+  - `docs/smoke-test-external.md:61,101` (`font.json`) **es de T6, no de T5**: la propia T5 dice
+    literal «su repunte a `Ballega.otf` va en T6», sin restringir el sitio. El CA1 de T5 («en todo el
+    repo») era **insatisfacible por T5 sola**. **T6 ya ampliada** por el líder (ver abajo).
+  - Las tres referencias rotas de `base-*.png` son **preexistentes** (`e523a97a`, muertas en
+    `cea05d6`, ancestro de HEAD) → **backlog**, no bloquean.
+- ❌ **Corrección de una afirmación que estuvo escrita aquí**: «el barrido global solo saldrá limpio
+  tras T6» **era falso** tal como estaba T6 enunciada — su descripción solo cubría los tres `fontUrl`
+  de la demo. Ya no lo es: T6 absorbe también las dos líneas de `docs/smoke-test-external.md`.
+- **Ampliación de T6 hecha por el líder** (`feature_list.json` id 6): las referencias a `font.json`
+  pasan de **tres a cinco** (las dos de `docs/smoke-test-external.md`), con su criterio de aceptación
+  reescrito; y los números de la correa actualizados al asset vigente. **No** se tocan los `font.json`
+  de `README.md:36` ni de `projects/ngx-products-3d/README.md:92,467`: son rutas ficticias
+  `/assets/3d/...` de la app consumidora y su repunte de fuente es **de T7**.
+- **Plan** (la parte de repunte, ya ejecutada y validada):
+  1. Repuntar el **código vivo** del playground (`badge-demo.component.ts:27,40,42` incluido el
+     comentario, `badge-demo.routes.ts:18`) de `/assets/band.jpg` a `/assets/band.png`.
+  2. Repuntar los **5 fixtures inertes** de tests (`badge-scene.component.spec.ts`,
+     `badge-texture.component.spec.ts`, `badge-texture.spec.ts`, `badge-theme.spec.ts`,
+     `badge.component.spec.ts`).
+  3. **Aspecto de referencia**: JSDoc de `BADGE_BAND.referenceTextureAspect` (`badge.config.ts`) y
+     `badge.config.spec.ts` dejan de citar `band.jpg` 1024×256 como si existiera; el test de
+     `badge-scene.component.spec.ts` deja de atribuir su 4:1 a un fichero borrado **sin** cambiar
+     el valor ni debilitar la aserción (`referenceTextureAspect` sigue = 4, no se toca).
+  4. **Docs**: `README.md`, `projects/ngx-products-3d/README.md` (incluido el contrato del arte de
+     la correa: tileable en X, con alfa, aspecto libre porque el `repeat` se deriva) y
+     `docs/smoke-test-external.md`.
+  5. **Git**: `git rm --cached`-equivalente real (`git rm`) de `band.jpg` y `font.json` (borrados
+     del disco, aún trackeados) + `git add` de `band.png` y `Ballega.otf`. **Prohibido**
+     `git checkout --` / `git restore` / `git stash` (norma 1).
+- **Criterios de aceptación aplicables** (copiados de `feature_list.json` id 5):
+  - Ninguna URL de asset apunta a un fichero inexistente en todo el repo
+  - `band.jpg` y `font.json` fuera del índice de git; `band.png` y `Ballega.otf` dentro
+  - El aspecto de referencia de los tests y del JSDoc ya no cita `band.jpg` 1024×256 como si existiera
+  - Los cinco fixtures de tests y las cuatro referencias de docs están repuntados
+  - `pnpm build` / `pnpm ng lint ngx-products-3d` / `pnpm ng test ngx-products-3d` verdes
+- **Fuera de alcance explícito**: los `fontUrl` → `Ballega.otf` (**T6**), controles y N3 del
+  playground (T6), resto de README/CHANGELOG (T7), `BADGE_BAND.referenceTextureAspect` (T4, cerrado).
 
 ## ✅ Cerrada: spec-04-T4 — `badge-band-repeat-derived` (feature `id: 4`)
 
@@ -169,7 +251,8 @@ tenerlo a mano:
    `Ballega.otf`: 176 glifos (con `Ñ`, `ó`, `#`), `FontLoader.parse` → `Font`,
    `generateShapes('Sergio #1234')` → 12 shapes. **Cero dependencias nuevas.**
 3. **`band.png` NO es un reemplazo drop-in.** `band.jpg` era 1024×256 (4:1, sin alfa); `band.png`
-   es **784×49** (16:1, con alfa). El shader de meshline (`meshline/dist/index.js:323`) **ignora la
+   es **725×70** (~10.36:1, con alfa; *cifra del asset vigente — al escribirse esta nota era 784×49*).
+   El shader de meshline (`meshline/dist/index.js:323`) **ignora la
    transformada UV de la textura**, así que la orientación no se puede corregir por código — por eso
    el asset se pidió girado, y Sergio ya lo entregó así.
 
@@ -186,19 +269,19 @@ tenerlo a mano:
 
 | Fichero | Estado |
 |---|---|
-| `Ballega.otf` | ✅ Entregado (70 736 B, 176 glifos) |
-| `band.png` | ✅ Entregado y **ya girado** (784×49, 16:1, con alfa) |
-| `band.jpg` | ❌ Borrado del disco, **aún trackeado** en git → `git rm` en T5 |
-| `font.json` | ❌ **Borrado por Sergio** durante esta sesión, aún trackeado → `git rm` en T5 |
+| `Ballega.otf` | ✅ Entregado (70 736 B, 176 glifos), **en el índice de git** desde T5 |
+| `band.png` | ✅ Entregado y **ya girado**. Revisión vigente **725×70** (~10.36:1, con alfa), en el índice desde T5 |
+| `band.jpg` | ✅ **Fuera del índice** (`git rm` en T5); llevaba borrado del disco pero trackeado |
+| `font.json` | ✅ **Fuera del índice** (`git rm` en T5). Su **repunte** a `Ballega.otf` es de T6 |
 
-⚠️ **La demo arranca hoy sin correa y sin textos**: `bandTextureUrl` apunta a `band.jpg` y los tres
-`fontUrl` a `font.json`, y los dos son 404. Degrada a color plano y a sin-texto con warns dev (los
-modos degradados diseñados), pero es un 404 vivo hasta que se cierren T5 y T6.
+⚠️ **La demo sigue arrancando sin textos**: los `fontUrl` apuntan a `font.json`, que es 404. La correa
+ya no lo es (T5 la repuntó a `band.png`). Degrada a sin-texto con warns dev — el modo degradado
+diseñado —, pero es un 404 vivo hasta que se cierre **T6**.
 
-**Fleco abierto de la correa**: el `repeat` derivado del asset entregado sale **−0.846**, o sea
-**menos de una tesela** — se vería ~85 % del arte y se cortaría. No es un fallo. Si debe repetirse,
-la tesela tiene que ser más corta (196×49 reproduce el teselado que había con `band.jpg`). **Se
-decide viendo el playground en la N3 de T6**, y el arreglo sería de asset, no de código.
+**Fleco de la correa: CERRADO por el propio asset.** El «`repeat` −0.846, menos de una tesela»
+correspondía a la entrega de 784×49, hoy **retirada**. Con el asset vigente el `repeat` es **−1.3066**
+(**1,31 teselas**) y la propuesta de tesela más corta (196×49) queda **descartada**. Lo que se mira en
+la N3 de T6 pasa a ser si **la costura del tileado canta**.
 
 **Sin selector de fuente en la demo**: al desaparecer `font.json`, `Ballega.otf` es la fuente única y
 un selector no tendría nada que elegir. El camino de typeface JSON queda cubierto por el test N1 de
@@ -243,6 +326,12 @@ abierta**: la 0.3.0 acumula ya los breaking de tres specs (F3, F4v2 y ésta).
   anterior a T4 de F4v2: ahora sí hay un quad opaco de `baseColor`.
 - **H3** — `alignOffsetX` tiene `switch` exhaustivo sin `default` ⇒ `undefined`/`NaN` para un
   consumidor **JS** con `align` inválido.
+- **P25** — `docs/smoke-test-external.md` cita **tres assets que ya no existen**: `base-gold.png`,
+  `base-silver.png` y `base-default.png` (`:61` dentro de las llaves del `cp`, y `:97,98,100`). Es un
+  **runbook**, no un ejemplo de consumidor: cada nombre de ese `cp` debe existir en el repo o el smoke
+  test peta en el paso 4. **Preexistente y ajeno a la correa**, confirmado por el reviewer de T5 con
+  `git blame` (líneas de `e523a97a`, 2026-07-21; los assets murieron en `cea05d6`, ancestro de HEAD).
+  No lo arregla T5 ni T6: **decidir si va a anexo de T7 o a spec propia**.
 - **Higiene fuera de spec** — (a) Prettier reporta ficheros no formateados por **CRLF** en todo el
   repo (`endOfLine: lf` por defecto): arreglo = fijar `endOfLine`/`.gitattributes` + un `--write` en
   **commit dedicado**. (b) `setupFiles` en el target `test` de `angular.json` para ejecutar el stub

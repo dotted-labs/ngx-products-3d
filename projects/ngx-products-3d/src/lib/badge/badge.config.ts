@@ -91,11 +91,13 @@ export const BADGE_BAND = {
 	 */
 	ropeJoints: 3,
 	/**
-	 * Aspecto (ancho/alto) de la textura de correa de REFERENCIA: `band.jpg` del playground,
-	 * 1024×256 = 4:1. Solo se usa como fallback de `bandRepeatFor` cuando el aspecto real no es
-	 * medible (textura sin resolver, `image` sin dimensiones, 0 o `NaN`): el teselado degrada al
-	 * del arte de referencia en vez de escribir un `NaN` en el uniform, que dejaría la correa sin
-	 * textura y sin decir por qué.
+	 * Aspecto (ancho/alto) del arte de correa de REFERENCIA, 4:1: el que tuvo el teselado
+	 * precalculado a mano de spec-03-F3 (`-3.383`), hoy solo un ancla histórica. El arte real es
+	 * de proporción LIBRE y su aspecto se mide de la textura cargada, así que este valor no
+	 * describe ningún asset concreto. Solo se usa como fallback de `bandRepeatFor` cuando el
+	 * aspecto real no es medible (textura sin resolver, `image` sin dimensiones, 0 o `NaN`): el
+	 * teselado degrada al del arte de referencia en vez de escribir un `NaN` en el uniform, que
+	 * dejaría la correa sin textura y sin decir por qué.
 	 */
 	referenceTextureAspect: 4,
 } as const;

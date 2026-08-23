@@ -58,7 +58,7 @@ auto-instala.
 
 ```bash
 mkdir -p public/assets
-cp <repo>/projects/products-3d-playground/public/assets/{membresia.glb,band.jpg,base-gold.png,base-silver.png,base-default.png,font.json} public/assets/
+cp <repo>/projects/products-3d-playground/public/assets/{membresia.glb,band.png,base-gold.png,base-silver.png,base-default.png,font.json} public/assets/
 ```
 
 ## 5. Cablear la app (3 archivos)
@@ -92,7 +92,7 @@ export const badgeRoutes: Routes = [
 			provideNgtRenderer(),
 			provideProducts3d({ cardModelUrl: '/assets/membresia.glb' }),
 			provideProducts3dBadgeTheme({
-				bandTextureUrl: '/assets/band.jpg',
+				bandTextureUrl: '/assets/band.png',
 				baseTextures: {
 					gold: '/assets/base-gold.png',
 					silver: '/assets/base-silver.png',

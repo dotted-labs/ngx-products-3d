@@ -82,7 +82,7 @@ export const membershipRoutes: Routes = [
 			provideNgtRenderer(),
 			provideProducts3d({ cardModelUrl: '/assets/3d/membresia.glb' }),
 			provideProducts3dBadgeTheme({
-				bandTextureUrl: '/assets/3d/band.jpg',
+				bandTextureUrl: '/assets/3d/band.png',
 				// Arte del frente por tier: ratio 32:45 con alfa (§ Contrato del asset frontal)
 				baseTextures: {
 					gold: '/assets/3d/front-gold.webp',
@@ -194,7 +194,7 @@ físico + escena del badge.
 
 | Campo | Tipo | Requerido | Default | Para qué sirve |
 | --- | --- | --- | --- | --- |
-| `bandTextureUrl` | `string` | sí | — | Textura de la correa (lanyard). La lib aplica `RepeatWrapping` y la tesela ~3.4 veces a lo largo (`BADGE_BAND.repeat`, calibrado para un arte tileable en X de proporción 4:1). Si la carga falla: color plano + warn en dev |
+| `bandTextureUrl` | `string` | sí | — | Textura de la correa (lanyard). La lib aplica `RepeatWrapping` y **deriva** el teselado del aspecto real de la textura (`bandRepeatFor`), así que el arte solo tiene que ser tileable en X. Si la carga falla: color plano + warn en dev |
 | `baseTextures` | `Record<string, string>` | sí (puede ir `{}`) | — | Arte del frente de la tarjeta por tier (key = `BadgeMemberData.tier`). **`{}` es válido**: con el mapa vacío todos los tiers caen en `defaultBaseTextureUrl`. Contrato del fichero: § [Contrato del asset frontal](#contrato-del-asset-frontal) |
 | `defaultBaseTextureUrl` | `string` | sí (**validado en runtime**) | — | Fallback obligatorio cuando el tier del socio no existe en `baseTextures`. Es el único campo de arte del frente realmente obligatorio |
 | `fontUrl` | `string` | sí (**validado en runtime**) | — | Typeface JSON de three para los textos 3D del frente |
@@ -254,7 +254,11 @@ La lib **no empaqueta ningún asset**; los del playground del repo son solo demo
 consumidora aporta los suyos:
 
 - **Correa** (`bandTextureUrl`): cualquier formato que cargue `TextureLoader` de three (PNG, JPG,
-  WebP…). Arte tileable en X de proporción ~4:1 (la lib lo tesela ~3.4 veces a lo largo).
+  WebP…). Arte **tileable en X**; el aspecto es libre, porque la lib deriva el número de teselas del
+  aspecto real de la textura cargada (`bandRepeatFor`): un arte muy alargado da **menos de una
+  tesela** y se corta por el extremo, y la solución es una tesela más corta, no configuración.
+  **Alfa recomendada** (PNG/WebP): el material de la correa declara `transparent`, así que las zonas
+  transparentes del arte no se pintan.
 - **Arte del frente** (`baseTextures`, `defaultBaseTextureUrl`): tiene contrato propio, § siguiente.
 - **Fuente** (`fontUrl`): typeface **JSON** de three (formato de `FontLoader`), NO `.ttf`/`.woff`.
   Convierte tu fuente con [facetype.js](https://gero3.github.io/facetype.js/).
@@ -456,7 +460,7 @@ export class CustomBadgeCanvasComponent {
 	});
 
 	protected readonly theme: Products3dBadgeTheme = {
-		bandTextureUrl: '/assets/3d/band.jpg',
+		bandTextureUrl: '/assets/3d/band.png',
 		// baseTextures puede ir {}: todos los tiers caerían en defaultBaseTextureUrl
 		baseTextures: { gold: '/assets/3d/front-gold.webp' },
 		defaultBaseTextureUrl: '/assets/3d/front-default.webp',

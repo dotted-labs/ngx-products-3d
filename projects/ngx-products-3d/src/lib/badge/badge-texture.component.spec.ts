@@ -154,7 +154,7 @@ const MEMBER: BadgeMemberData = {
 };
 
 const THEME: Products3dBadgeTheme = {
-	bandTextureUrl: 'assets/band.jpg',
+	bandTextureUrl: 'assets/band.png',
 	baseTextures: { gold: 'assets/base-gold.webp' },
 	defaultBaseTextureUrl: 'assets/base-default.webp',
 	fontUrl: 'assets/font.json',
