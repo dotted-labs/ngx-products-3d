@@ -187,6 +187,23 @@
         "pnpm build / lint / test / build del playground en verde"
       ],
       "status": "done"
+    },
+    {
+      "id": 10,
+      "name": "badge-font-cff-winding",
+      "title": "Tipografía OTF (CFF) con glifos rotos: reversed según la cabecera sfnt",
+      "spec": "hotfix",
+      "phase": 1,
+      "depends_on": [3],
+      "description": "Hotfix (Sergio, 2026-09-28): con Ballega.otf los glifos con hueco (o, D, A, e, a, d) salen rotos. TTFLoader se usa con reversed=false, y las fuentes CFF (cabecera OTTO) tienen el giro contrario a TrueType, así que exterior y hueco se intercambian. Encargo completo en progress/task_font-cff-winding.md.",
+      "acceptance_criteria": [
+        "reversed decidido por la cabecera sfnt (OTTO ⇒ true), no por extensión",
+        "Glifos con hueco de Ballega.otf con área positiva; TrueType sin cambios",
+        "Se mantienen import() dinámico, caché por URL, descacheo en fallo y passthrough JSON",
+        "Tests nuevos que fallan con el código actual",
+        "pnpm build / lint / test / build del playground en verde"
+      ],
+      "status": "done"
     }
   ]
 }

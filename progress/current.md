@@ -17,6 +17,30 @@ Baseline heredado: `pnpm build` ✅ · `pnpm ng lint ngx-products-3d` ✅ ·
 `pnpm ng test ngx-products-3d` **160/160** ✅ · `pnpm ng build products-3d-playground` ✅.
 **El implementer debe revalidarlo antes de tocar nada** (§1 de `AGENTS.md`).
 
+## ✅ Cerrada (2026-09-28): hotfix `badge-font-cff-winding` (feature `id: 10`)
+
+- **Feature**: hotfix-10 — glifos con hueco rotos con fuentes CFF (`Ballega.otf`) (encargo:
+  `progress/task_font-cff-winding.md`). Fuera de spec-04; T5–T7 no se tocan. Base = HEAD `91239a1`.
+- **Baseline revalidado** (implementer): build ✅ · lint ✅ · test **232/232** ✅.
+- **Estado**: **`done`**. **APPROVED** (`progress/review_font-cff-winding.md`). `feature_list.json`
+  id 10 = `done`. Informe: `progress/impl_font-cff-winding.md`. build ✅ · lint ✅ · test **244/244** ✅ · playground ✅
+  (`TTFLoader` sigue en chunk lazy); 6 mutaciones, ninguna sobrevive. Sin commitear.
+  **N3 visual pendiente de Sergio** (checklist en el informe).
+- **Plan** (ejecutado; la fn quedó como `sfntOutlineFormat(buffer)` → `'cff' | 'truetype' | undefined`):
+  1. Fn pura `isCffOutlineFont(buffer)` en `badge-font.ts` (cabecera sfnt `OTTO`), con JSDoc del
+     porqué (giro CFF vs TrueType) y cita del diagnóstico.
+  2. `parseOpentypeFont`: descargar el `ArrayBuffer` con `FileLoader` (`arraybuffer`) y
+     `loader.parse(buffer)` con `reversed` fijado por la cabecera; cabecera desconocida → rechazo
+     claro (degrada igual que hoy: warn dev + sin textos). Se mantienen `import()` dinámico, caché
+     por URL y descacheo en fallo.
+  3. Tests N1: detección, `reversed` fijado según cabecera (falla con el código actual), integración
+     con el `Ballega.otf` real (área con signo de «o» > 0) si el runner lo permite.
+  4. JSDoc de cabecera de `badge-font.ts` actualizado.
+- **Criterios de aceptación aplicables** (task_font-cff-winding.md): `reversed` por cabecera sfnt
+  (`OTTO` ⇒ true) · con `Ballega.otf` glifos con hueco con área positiva, TrueType sin cambios ·
+  `import()` dinámico, caché, descacheo y passthrough JSON intactos · tests nuevos que fallan con el
+  código actual · build/lint/test/playground verdes · N3 pendiente de Sergio.
+
 ## ✅ Cerrada (2026-09-28): hotfix `badge-band-endcap` (feature `id: 9`)
 
 - **Feature**: hotfix-9 — extremo de la correa deformado/parpadeante (encargo:

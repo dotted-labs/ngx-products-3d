@@ -51,7 +51,8 @@ vi.hoisted(() => {
 });
 
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
-import { BufferGeometry, Float32BufferAttribute, Mesh, SRGBColorSpace } from 'three';
+import { BufferGeometry, FileLoader, Float32BufferAttribute, Mesh, SRGBColorSpace } from 'three';
+import type { MockInstance } from 'vitest';
 import type { BadgeMemberData, Products3dBadgeTheme } from '../types';
 import { Products3dBadgeTexture } from './badge-texture.component';
 import {
@@ -86,20 +87,37 @@ vi.mock('angular-three-soba/loaders', () => ({
 	},
 }));
 
-// Doble del TTFLoader de three, que el componente pide por import() DINÁMICO al resolver una fuente
-// binaria: el módulo real arrastra el `opentype` embebido (~467 KB) y su loadAsync haría una
-// petición HTTP real, imposible en jsdom. `failures` marca una URL como rota para el degradado.
-const ttfLoaderMock = vi.hoisted(() => ({
+// Dobles de la conversión de fuente binaria (`badge-font.ts`): la descarga (`FileLoader.loadAsync`
+// de three, espiado en el prototipo) haría una petición HTTP real, imposible en jsdom, y el
+// TTFLoader que el componente pide por import() DINÁMICO arrastra el `opentype` embebido (~467 KB).
+// La descarga sirve una cabecera CFF (`OTTO`) mínima y apunta la URL en `loaded`; `failures` marca
+// una URL como rota para el degradado. El giro (`reversed`) se prueba en badge-font.spec.ts.
+const fontLoaderMock = vi.hoisted(() => ({
 	loaded: [] as string[],
 	failures: new Set<string>(),
 }));
-vi.mock('three/addons/loaders/TTFLoader.js', () => ({
-	TTFLoader: class {
-		async loadAsync(url: string): Promise<unknown> {
-			ttfLoaderMock.loaded.push(url);
-			if (ttfLoaderMock.failures.has(url)) {
+let fontDownloadSpy: MockInstance<FileLoader['loadAsync']>;
+beforeEach(() => {
+	fontDownloadSpy = vi
+		.spyOn(FileLoader.prototype, 'loadAsync')
+		.mockImplementation(async (url: string) => {
+			fontLoaderMock.loaded.push(url);
+			if (fontLoaderMock.failures.has(url)) {
 				throw new Error(`fetch for "${url}" responded with 404: Not Found`);
 			}
+			const cffHeader = new ArrayBuffer(12);
+			new DataView(cffHeader).setUint32(0, 0x4f54544f); // 'OTTO'
+			return cffHeader;
+		});
+});
+afterEach(() => {
+	fontDownloadSpy.mockRestore();
+});
+vi.mock('three/addons/loaders/TTFLoader.js', () => ({
+	TTFLoader: class {
+		reversed = false;
+
+		parse(): unknown {
 			return { familyName: 'Ballega', resolution: 1000, glyphs: {} };
 		}
 	},
@@ -359,8 +377,8 @@ describe('Products3dBadgeTexture front asset ratio', () => {
 
 describe('Products3dBadgeTexture font', () => {
 	afterEach(() => {
-		ttfLoaderMock.loaded = [];
-		ttfLoaderMock.failures.clear();
+		fontLoaderMock.loaded = [];
+		fontLoaderMock.failures.clear();
 		vi.restoreAllMocks();
 	});
 
@@ -376,8 +394,8 @@ describe('Products3dBadgeTexture font', () => {
 		// es lo que deja intacto el camino de siempre: la carga y la caché siguen siendo de soba.
 		expect(internals.resolvedFont()).toBe('assets/font.json');
 		expect(typeof internals.resolvedFont()).toBe('string');
-		// Y no se toca el TTFLoader: quien usa typeface JSON no paga el import() dinámico.
-		expect(ttfLoaderMock.loaded).toEqual([]);
+		// Y no se descarga nada por el conversor: quien usa typeface JSON no paga el import() dinámico.
+		expect(fontLoaderMock.loaded).toEqual([]);
 	});
 
 	it('resolves an .otf font to the parsed typeface data, not to the url', async () => {
@@ -392,7 +410,7 @@ describe('Products3dBadgeTexture font', () => {
 		// ...y al resolver llega el typeface JSON como OBJETO (NgtsText3D lo acepta sin transform;
 		// una url .otf reventaría en el loadFontData de soba, que hace response.json()).
 		expect(internalsOf(fixture).resolvedFont()).toMatchObject({ familyName: 'Ballega' });
-		expect(ttfLoaderMock.loaded).toEqual(['assets/Ballega.otf']);
+		expect(fontLoaderMock.loaded).toEqual(['assets/Ballega.otf']);
 	});
 
 	it('keeps the same font reference when the theme object changes but the url does not', async () => {
@@ -416,7 +434,7 @@ describe('Products3dBadgeTexture font', () => {
 		// aquí la haría re-parsear la fuente entera en cada tick del picker.
 		expect(internals.resolvedFont()).toBe(first);
 		expect(internals.textColor()).toBe('#ff0000');
-		expect(ttfLoaderMock.loaded).toEqual(['assets/Stable.otf']);
+		expect(fontLoaderMock.loaded).toEqual(['assets/Stable.otf']);
 	});
 
 	it('accepts a .ttf as well, with the same conversion path', async () => {
@@ -425,12 +443,12 @@ describe('Products3dBadgeTexture font', () => {
 		await fixture.whenStable();
 
 		expect(internalsOf(fixture).resolvedFont()).toMatchObject({ familyName: 'Ballega' });
-		expect(ttfLoaderMock.loaded).toEqual(['assets/Ballega.ttf']);
+		expect(fontLoaderMock.loaded).toEqual(['assets/Ballega.ttf']);
 	});
 
 	it('degrades to a front WITHOUT TEXT (warning in dev) when the font fails, never throwing', async () => {
 		const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-		ttfLoaderMock.failures.add('assets/Broken.otf');
+		fontLoaderMock.failures.add('assets/Broken.otf');
 
 		const fixture = createTextureScene(themeWithFont('assets/Broken.otf'));
 		fixture.detectChanges();
@@ -457,17 +475,17 @@ describe('Products3dBadgeTexture font', () => {
 	it('does not warn about the font when the theme uses a typeface JSON', async () => {
 		const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 		// Trampa deliberada: si el typeface JSON acabara pasando por el conversor binario, el doble
-		// del TTFLoader fallaría y el warn del camino binario aparecería aquí. URL propia, distinta
+		// de la descarga fallaría y el warn del camino binario aparecería aquí. URL propia, distinta
 		// de la del test de passthrough: la caché de typefaces es de módulo y sobrevive al afterEach,
 		// así que reutilizarla dejaría este caso pasando por un acierto de caché.
-		ttfLoaderMock.failures.add('assets/only-json.json');
+		fontLoaderMock.failures.add('assets/only-json.json');
 
 		const fixture = createTextureScene(themeWithFont('assets/only-json.json'));
 		fixture.detectChanges();
 		await fixture.whenStable();
 
 		// El recurso de conversión queda IDLE (params undefined), no en error.
-		expect(ttfLoaderMock.loaded).toEqual([]);
+		expect(fontLoaderMock.loaded).toEqual([]);
 		expect(warn.mock.calls.map((call) => String(call[0])).join('\n')).not.toContain('fuente');
 	});
 });
