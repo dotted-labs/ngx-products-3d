@@ -178,9 +178,39 @@ físico + escena del badge.
 | `theme` | `Products3dBadgeTheme` | no | token del provider | Tema visual. Ver gotcha abajo |
 | `debug` | `boolean` | no | `false` | Wireframes de colliders/joints de la física |
 
+| Output | Tipo | Descripción |
+| --- | --- | --- |
+| `ready` | `void` | El badge terminó de cargar y se soltó (ver «Arranque» abajo). Se emite **una sola vez** |
+
 > **Gotcha del tema**: el input `[theme]` **PISA por completo** al tema registrado con
 > `provideProducts3dBadgeTheme()` — no hay merge campo a campo entre ambos. Si pasas `[theme]`,
 > pasa el tema COMPLETO. La resolución es: `input ?? token ?? Error`.
+
+#### Arranque: carga y caída
+
+Mientras el badge carga **no se ve nada de él** (ni correa ni tarjeta) y su física está congelada.
+Espera a que terminen **todos** sus recursos: el WASM de Rapier, el GLB (`cardModelUrl`), la textura
+de la correa (`bandTextureUrl`), la textura base del tier y la fuente (con sus textos ya
+construidos). Después precompila los shaders (`WebGLRenderer.compileAsync`) para que el primer
+frame no dé un tirón, y entonces lo suelta: la cadena y la tarjeta **caen desde fuera del viewport
+por arriba** con física real y llegan con un poco de balanceo. En ese momento se emite `(ready)`.
+
+- **Un recurso en error cuenta como terminado**: el badge cae igual con el fallback de siempre
+  (correa de color plano, sin tarjeta, sin textos) y el aviso dev de cada recurso.
+- **Tope**: si a los `BADGE_LOADING.timeoutMs` (10 s) algo sigue sin terminar, se suelta con lo que
+  haya y se avisa en dev (`[ngx-products-3d]`, con lo que faltaba).
+- **Solo al arrancar**: cambiar `theme` o `member` después (otra textura, otra fuente) se aplica en
+  sitio, sin volver a esconder ni congelar nada, y `(ready)` no se repite.
+- **`prefers-reduced-motion: reduce`**: sin caída; cuando todo ha cargado, el badge aparece
+  directamente colgando en su pose de reposo.
+- Pose de reposo: `BADGE_LAYOUT`. Pose de salida: `badgeDropLayout()`, derivada del frustum de
+  `BADGE_CAMERA` para que la tarjeta entera (clip incluido) quede por encima del borde superior con
+  `BADGE_DROP.frustumMargin` de holgura; `BADGE_DROP.lateralOffset` es el desplazamiento lateral que
+  le da el balanceo.
+
+```html
+<products-3d-badge [member]="member()" (ready)="onBadgeReady()" />
+```
 
 ### `BadgeMemberData`
 
@@ -421,6 +451,20 @@ Si quieres componer el badge con otros elementos 3D, la lib exporta la escena f�
 | `member` | `BadgeMemberData` | sí |
 | `theme` | `Products3dBadgeTheme` | sí |
 | `debug` | `boolean` | no — reservado; en canvas propio el debug de física se activa en las `[options]` de `<ngtr-physics>` |
+
+| Output de `Products3dBadgeScene` | Tipo | Descripción |
+| --- | --- | --- |
+| `ready` | `void` | Una sola vez, al soltar el badge con todo cargado (o al vencer el tope) |
+
+El arranque (badge oculto y congelado hasta que todo carga, precompilación y caída) vive **en la
+escena**, así que también funciona en un canvas propio. No pausa el mundo de Rapier (`paused` de
+`<ngtr-physics>`): deshabilita solo los bodies del badge, así que no congela otros cuerpos que
+compartan el mundo. Dos cosas a tener en cuenta:
+
+- La pose de salida se deriva del frustum de `BADGE_CAMERA`. Con otra cámara la tarjeta puede
+  asomar en la pose de salida, pero no se ve: la escena no la pinta hasta soltarla.
+- Precompila con la iluminación y el environment que haya en la escena en ese momento: monta tus
+  luces y tu `<ngts-environment>` junto al canvas, no después del badge.
 
 ```ts
 import { ChangeDetectionStrategy, Component, CUSTOM_ELEMENTS_SCHEMA, signal } from '@angular/core';

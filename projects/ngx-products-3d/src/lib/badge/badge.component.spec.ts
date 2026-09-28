@@ -261,6 +261,34 @@ describe('Products3dBadge', () => {
 		});
 	});
 
+	describe('ready output', () => {
+		/** Template REAL del wrapper (los tests no montan el canvas con WebGL). */
+		function wrapperTemplate(): string {
+			const metadata = Products3dBadge as unknown as {
+				decorators?: { args?: { template?: string }[] }[];
+			};
+			return metadata.decorators?.[0]?.args?.[0]?.template ?? '';
+		}
+
+		it('listens to the ready output of the scene', () => {
+			const sceneTag = /<products-3d-badge-scene\b[^>]*\/>/.exec(wrapperTemplate())?.[0] ?? '';
+
+			expect(sceneTag).toContain('(ready)="onSceneReady()"');
+		});
+
+		it('re-emits the scene ready as its own (ready) output', () => {
+			const fixture = createBadge({ inputTheme: makeTheme('assets/font.json') });
+			let emissions = 0;
+			fixture.componentInstance.ready.subscribe(() => {
+				emissions += 1;
+			});
+
+			(fixture.componentInstance as unknown as { onSceneReady: () => void }).onSceneReady();
+
+			expect(emissions).toBe(1);
+		});
+	});
+
 	describe('SSR guard', () => {
 		it('renders nothing on the server platform: no ngt-canvas, no <canvas> in document', () => {
 			const fixture = createBadge({

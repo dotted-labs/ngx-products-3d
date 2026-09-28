@@ -17,6 +17,45 @@ Baseline heredado: `pnpm build` ✅ · `pnpm ng lint ngx-products-3d` ✅ ·
 `pnpm ng test ngx-products-3d` **160/160** ✅ · `pnpm ng build products-3d-playground` ✅.
 **El implementer debe revalidarlo antes de tocar nada** (§1 de `AGENTS.md`).
 
+## 🔄 En curso (2026-09-28): hotfix `badge-loading-drop` (feature `id: 11`)
+
+- **Feature**: hotfix-11 — estado de loading + caída desde arriba con todo cargado (encargo:
+  `progress/task_loading-state.md`, acordado con Sergio en 3 rondas de preguntas). Fuera de
+  spec-04; T5–T7 no se tocan. Rama `fix/loading-state`, base = HEAD `2a2a52f`.
+- **Baseline** (leader): build ✅ · lint ✅ · test **244/244** ✅.
+- **Escalado**: fase compleja (escena + wrapper + texture + config + API pública) → 1 implementer
+  (verifica APIs en `node_modules` él mismo) → 1 reviewer.
+- **Estado**: **`done`**. **APPROVED** (`progress/review_loading-state.md`, 10/10 CA). Informe:
+  `progress/impl_loading-state.md` (incl. sección Post-review: 2 tests añadidos para las
+  observaciones 1–2 del reviewer, cazan R3/R4). Verificación final del leader: build ✅ · lint ✅ ·
+  test **319/319** ✅ · playground ✅. Commiteado y pusheado en `fix/loading-state`. **N3 firmada por Sergio (2026-09-28)** (checklist
+  de 11 puntos en el informe). Notas para el CHANGELOG (T7) en el informe.
+- **En curso (implementer)**: hotfix-11 — `badge-loading-drop`. Baseline revalidado: build ✅ ·
+  lint ✅ · test **244/244** ✅.
+- **Estado (implementer)**: implementado, **pendiente de review**. build ✅ · lint ✅ · test
+  **317/317** ✅ · playground ✅. Contra HEAD la suite no compila (13 errores TS); 13 mutaciones y
+  ninguna sobrevive. Informe: `progress/impl_loading-state.md` (incluye checklist N3). Sin commitear.
+- **Post-review**: **APPROVED**. Se añaden 2 tests (guard `destroyed`, `readyEmitted`) que caen con
+  R3/R4. build ✅ · lint ✅ · test **319/319** ✅ · playground ✅. `feature_list.json` id 11 =
+  **`done`**. Sin commitear. **N3 visual pendiente de Sergio**.
+- **Plan**:
+  1. Config: `BADGE_LAYOUT` pasa a pose de REPOSO derivada; `BADGE_CARD_MODEL.bounds` (AABB del
+     GLB); `BADGE_DROP` (offset lateral, margen, pliegue en z) + `badgeDropLayout()` derivada del
+     frustum de `BADGE_CAMERA`; `BADGE_LOADING.timeoutMs`.
+  2. Lógica pura en `badge-loading.ts`: `isResourceSettled`, `badgeLoadSettled`, `frontSettled`,
+     `nextLoadPhase` (loading → compiling → released; timeout; nunca vuelve atrás),
+     `prefersReducedMotion` (guard SSR).
+  3. Escena: gate con `setEnabled(false)` de los bodies crudos (antes del paso de Rapier), tarjeta y
+     correa `visible` solo tras soltar, `compileAsync(scene, camera)` antes de soltar, timeout con
+     warn dev, drag bloqueado, output `ready` una vez. Texture: output `ready` (base + fuente/textos).
+     Wrapper: re-emite `(ready)`.
+  4. `lerpTowards`: `alpha` acotado a 1. Tests N1 que fallan con el código actual. README.
+- **Criterios de aceptación aplicables**: los 10 de `progress/task_loading-state.md` (nada visible
+  y física congelada hasta recursos + shaders; caída real desde fuera del viewport con offset
+  configurable y derivación documentada; error = terminado; timeout con warn; solo en el arranque;
+  reduced-motion con guard SSR; output `ready` una vez + re-emitido + README; sin allocations por
+  frame y constantes en config; tests que fallan antes; build/lint/test/playground verdes).
+
 ## ✅ Cerrada (2026-09-28): hotfix `badge-font-cff-winding` (feature `id: 10`)
 
 - **Feature**: hotfix-10 — glifos con hueco rotos con fuentes CFF (`Ballega.otf`) (encargo:

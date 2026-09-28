@@ -12,6 +12,11 @@ export function clamp(value: number, min: number, max: number): number {
  * Opera sobre componentes `Vec3Like` para consumir la traslación cruda de Rapier
  * sin construir un Vector3, y calcula la distancia a mano (no `Vector3.distanceTo`,
  * que exigiría un Vector3 destino y una allocation por frame). Devuelve `out`.
+ *
+ * El factor de interpolación se acota a 1: con `delta` alto (frame lento, pestaña que vuelve, un
+ * tirón al compilar shaders) `delta · velocidad` pasa de 1 y el punto se pasaría de largo del
+ * objetivo en vez de alcanzarlo. Con el máximo de la config (`maxSpeed` 50) basta un frame de más de
+ * 20 ms, es decir, cualquier caída por debajo de 50 fps.
  */
 export function lerpTowards(
 	target: Vec3Like,
@@ -27,7 +32,7 @@ export function lerpTowards(
 	const dz = target.z - out.z;
 	const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
 	const clampedDistance = clamp(distance, clampMin, clampMax);
-	const alpha = delta * (minSpeed + clampedDistance * (maxSpeed - minSpeed));
+	const alpha = Math.min(1, delta * (minSpeed + clampedDistance * (maxSpeed - minSpeed)));
 	out.x += dx * alpha;
 	out.y += dy * alpha;
 	out.z += dz * alpha;

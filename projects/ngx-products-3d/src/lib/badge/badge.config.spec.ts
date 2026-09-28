@@ -1,9 +1,14 @@
+import { PerspectiveCamera, Vector3 } from 'three';
 import {
+	badgeDropLayout,
 	bandRepeatFor,
 	BADGE_BAND,
 	BADGE_CAMERA,
 	BADGE_CARD_MODEL,
+	BADGE_DROP,
 	BADGE_FRONT_FACE,
+	BADGE_LAYOUT,
+	BADGE_LOADING,
 	BADGE_LOOP_PRIORITY,
 	BADGE_PHYSICS,
 	BADGE_TEXT_LAYOUT,
@@ -354,5 +359,177 @@ describe('BADGE_BAND.endCapTolerance (band end-cap detection in the vertex shade
 		const halfHeight = BADGE_CAMERA.position[2] * Math.tan((BADGE_CAMERA.fov * Math.PI) / 360);
 
 		expect(BADGE_BAND.endCapTolerance).toBeLessThanOrEqual(segment / halfHeight / 100);
+	});
+});
+
+type Tuple3 = readonly [number, number, number];
+
+function distance(a: Tuple3, b: Tuple3): number {
+	return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+}
+
+describe('BADGE_LAYOUT (rest pose, the reduced-motion start)', () => {
+	it('hangs the card with its joint anchor exactly on j3 (the spherical joint starts satisfied)', () => {
+		const { cardPosition, j3Position } = BADGE_LAYOUT;
+		const anchor = BADGE_PHYSICS.cardJointAnchor;
+
+		for (let axis = 0; axis < 3; axis++) {
+			expect(cardPosition[axis] + anchor[axis]).toBeCloseTo(j3Position[axis], 10);
+		}
+	});
+
+	it('hangs the chain straight down from the fixed anchor with every rope taut', () => {
+		const { fixedPosition, j1Position, j2Position, j3Position } = BADGE_LAYOUT;
+		const chain = [fixedPosition, j1Position, j2Position, j3Position];
+
+		chain.slice(1).forEach((body, i) => {
+			expect(distance(body, chain[i])).toBeCloseTo(BADGE_PHYSICS.segmentLength, 10);
+			expect(body[0]).toBe(fixedPosition[0]);
+			expect(body[1]).toBeLessThan(chain[i][1]);
+		});
+	});
+
+	it('no longer places the card sideways (the old [2, 0, 0] made it swing on every load)', () => {
+		expect(BADGE_LAYOUT.cardPosition[0]).toBe(BADGE_LAYOUT.fixedPosition[0]);
+		expect(BADGE_LAYOUT.cardPosition).not.toEqual([2, 0, 0]);
+	});
+});
+
+describe('BADGE_CARD_MODEL.bounds (whole model AABB)', () => {
+	it('encloses the card collider, the clip top where the joint grabs and the band slot', () => {
+		const { min, max } = BADGE_CARD_MODEL.bounds;
+		const half = BADGE_PHYSICS.cardColliderHalfExtents;
+
+		for (let axis = 0; axis < 3; axis++) {
+			expect(min[axis]).toBeLessThanOrEqual(-half[axis]);
+			expect(max[axis]).toBeGreaterThanOrEqual(half[axis]);
+		}
+		expect(max[1]).toBeGreaterThanOrEqual(BADGE_PHYSICS.cardJointAnchor[1]);
+		expect(max[1]).toBeGreaterThanOrEqual(BADGE_CARD_MODEL.bandAttachPoint[1]);
+	});
+
+	it('reaches the top of the clamp (y 1.564 in membresia.glb), above the card itself', () => {
+		// Ancla independiente: vértices del nodo clamp con su transform aplicado.
+		expect(BADGE_CARD_MODEL.bounds.max[1]).toBeGreaterThanOrEqual(1.564);
+		expect(BADGE_CARD_MODEL.bounds.min[2]).toBeLessThanOrEqual(-0.09);
+	});
+});
+
+describe('badgeDropLayout (start pose, above the viewport)', () => {
+	/** Cámara REAL de three con la config de la lib: ancla independiente de la fórmula. */
+	function libCamera(aspect: number): PerspectiveCamera {
+		const camera = new PerspectiveCamera(BADGE_CAMERA.fov, aspect, 0.1, 100);
+		camera.position.set(...BADGE_CAMERA.position);
+		camera.updateMatrixWorld();
+		return camera;
+	}
+
+	/** Las 8 esquinas del AABB del modelo con la tarjeta en `center` (sin rotar). */
+	function cardCorners(center: Tuple3): Vector3[] {
+		const { min, max } = BADGE_CARD_MODEL.bounds;
+		const corners: Vector3[] = [];
+		for (const x of [min[0], max[0]]) {
+			for (const y of [min[1], max[1]]) {
+				for (const z of [min[2], max[2]]) {
+					corners.push(new Vector3(center[0] + x, center[1] + y, center[2] + z));
+				}
+			}
+		}
+		return corners;
+	}
+
+	it.each([16 / 9, 1, 9 / 16])(
+		'keeps every corner of the whole card AABB above the frustum top (aspect %s)',
+		(aspect) => {
+			const camera = libCamera(aspect);
+
+			for (const corner of cardCorners(badgeDropLayout().cardPosition)) {
+				// NDC y > 1 = por encima del borde superior del viewport.
+				expect(corner.project(camera).y).toBeGreaterThan(1);
+			}
+		},
+	);
+
+	it('leaves exactly BADGE_DROP.frustumMargin under the farthest bottom corner', () => {
+		const card = badgeDropLayout().cardPosition;
+		const { min } = BADGE_CARD_MODEL.bounds;
+		const tanHalfFov = Math.tan((BADGE_CAMERA.fov * Math.PI) / 360);
+		const farZ = card[2] + min[2];
+		const frustumTopAtFarZ = (BADGE_CAMERA.position[2] - farZ) * tanHalfFov;
+
+		expect(card[1] + min[1] - frustumTopAtFarZ).toBeCloseTo(BADGE_DROP.frustumMargin, 10);
+		// Con la config actual: 13.09 · tan(12.5°) + 0.25 + 1.125 ≈ 4.277 (derivación del JSDoc).
+		expect(card[1]).toBeCloseTo(4.277, 3);
+	});
+
+	it('comes from right above the rest pose: the card lands inside the viewport', () => {
+		const camera = libCamera(16 / 9);
+		const rest = new Vector3(...BADGE_LAYOUT.cardPosition).project(camera);
+
+		expect(Math.abs(rest.y)).toBeLessThan(1);
+	});
+
+	it('shifts the card sideways by BADGE_DROP.lateralOffset, keeping the fixed anchor', () => {
+		const layout = badgeDropLayout();
+
+		expect(layout.fixedPosition).toEqual(BADGE_LAYOUT.fixedPosition);
+		expect(layout.cardPosition[0] - layout.fixedPosition[0]).toBeCloseTo(
+			BADGE_DROP.lateralOffset,
+			10,
+		);
+		// Casi a plomo: el desplazamiento es pequeño frente a la longitud de la cadena.
+		expect(Math.abs(BADGE_DROP.lateralOffset)).toBeLessThan(BADGE_PHYSICS.segmentLength);
+	});
+
+	it('takes the lateral offset as a parameter (0 = straight drop)', () => {
+		const straight = badgeDropLayout(0);
+
+		expect(straight.cardPosition[0]).toBe(BADGE_LAYOUT.fixedPosition[0]);
+		expect(badgeDropLayout(-0.5).cardPosition[0]).toBeCloseTo(
+			BADGE_LAYOUT.fixedPosition[0] - 0.5,
+			10,
+		);
+	});
+
+	it('starts with every joint satisfied: clip anchor on j3 and every rope within segmentLength', () => {
+		const { fixedPosition, j1Position, j2Position, j3Position, cardPosition } = badgeDropLayout();
+		const anchor = BADGE_PHYSICS.cardJointAnchor;
+
+		for (let axis = 0; axis < 3; axis++) {
+			expect(cardPosition[axis] + anchor[axis]).toBeCloseTo(j3Position[axis], 10);
+		}
+		const chain = [fixedPosition, j1Position, j2Position, j3Position];
+		chain.slice(1).forEach((body, i) => {
+			expect(distance(body, chain[i])).toBeLessThanOrEqual(BADGE_PHYSICS.segmentLength);
+		});
+	});
+
+	it('starts with no chain collider inside the card collider or inside another link', () => {
+		const { j1Position, j2Position, j3Position, cardPosition } = badgeDropLayout();
+		const radius = BADGE_PHYSICS.segmentColliderRadius;
+		const half = BADGE_PHYSICS.cardColliderHalfExtents;
+
+		// j1 y j2 caen dentro del rect X·Y de la tarjeta (la cadena sale plegada por encima del
+		// anclaje): el pliegue en z los deja delante de su cuboid, sin tocarlo.
+		for (const link of [j1Position, j2Position]) {
+			expect(Math.abs(link[2] - cardPosition[2])).toBeGreaterThan(half[2] + radius);
+		}
+		// j3 es el top del clip: queda por encima del borde superior del cuboid.
+		expect(j3Position[1] - cardPosition[1]).toBeGreaterThan(half[1] + radius);
+		// Y los eslabones no nacen solapados entre sí.
+		const links = [j1Position, j2Position, j3Position];
+		links.slice(1).forEach((link, i) => {
+			expect(distance(link, links[i])).toBeGreaterThan(2 * radius);
+		});
+	});
+});
+
+describe('BADGE_LOADING', () => {
+	it('waits about ten seconds at most before releasing with whatever loaded', () => {
+		expect(BADGE_LOADING.timeoutMs).toBe(10_000);
+	});
+
+	it('queries the standard reduced-motion media feature', () => {
+		expect(BADGE_LOADING.reducedMotionQuery).toBe('(prefers-reduced-motion: reduce)');
 	});
 });

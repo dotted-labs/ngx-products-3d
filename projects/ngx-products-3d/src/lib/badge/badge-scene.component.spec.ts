@@ -59,7 +59,17 @@ import {
 	type NgtrRopeJointParams,
 	type NgtrSphericalJointParams,
 } from 'angular-three-rapier';
-import { CatmullRomCurve3, Euler, Mesh, MeshStandardMaterial, Object3D, PerspectiveCamera, Vector2, Vector3 } from 'three';
+import {
+	CatmullRomCurve3,
+	Euler,
+	Mesh,
+	MeshStandardMaterial,
+	Object3D,
+	PerspectiveCamera,
+	Scene,
+	Vector2,
+	Vector3,
+} from 'three';
 import { PRODUCTS_3D_CONFIG } from '../tokens';
 import type {
 	BadgeMemberData,
@@ -70,12 +80,14 @@ import type {
 import { BadgeBandMaterial } from './badge-band-material';
 import { Products3dBadgeScene } from './badge-scene.component';
 import {
+	badgeDropLayout,
 	bandRepeatFor,
 	BADGE_BAND,
 	BADGE_BASE_COLOR,
 	BADGE_CAMERA,
 	BADGE_CARD_MODEL,
 	BADGE_LAYOUT,
+	BADGE_LOADING,
 	BADGE_LOOP_PRIORITY,
 	BADGE_MAP_ANISOTROPY,
 	BADGE_MATERIAL_DEFAULTS,
@@ -90,14 +102,24 @@ import {
 // `data` permite a los tests del tinte del metal simular el GLB YA resuelto (nodos clip/clamp +
 // material 'metal' reales de three, que no necesitan WebGL para clonarse ni teñirse). Por defecto
 // `undefined` = recurso sin resolver; se resetea en el beforeEach para no filtrarse entre tests.
-const gltfMock = vi.hoisted(() => ({ urls: [] as string[], data: undefined as unknown }));
+// `status` fuerza un estado concreto (p. ej. 'error' = URL rota) por encima del derivado de `data`;
+// como `data`, no es una signal: se fija ANTES de crear la escena.
+const gltfMock = vi.hoisted(() => ({
+	urls: [] as string[],
+	data: undefined as unknown,
+	status: undefined as string | undefined,
+}));
 // La correa lee su textura vía textureResource. Se CAPTURA la fn de entrada (no se invoca en
 // construcción: `theme` es un input y aún no tiene valor → NG0950 si se lee eager, a diferencia
 // del gltf que deriva la URL de un inject disponible ya). Los tests la invocan tras setInput.
 // `data` permite simular la textura YA resuelta (los tests del teselado solo necesitan `image`
 // con dimensiones: el aspecto sale de ahí). Por defecto `undefined` = recurso sin resolver; se
 // resetea en el beforeEach para no filtrarse entre tests.
-const textureMock = vi.hoisted(() => ({ inputs: [] as (() => string)[], data: undefined as unknown }));
+const textureMock = vi.hoisted(() => ({
+	inputs: [] as (() => string)[],
+	data: undefined as unknown,
+	status: undefined as string | undefined,
+}));
 // El componente lee los recursos vía el API NO-lanzante (hasValue()/status() + value()) para no
 // romper el render si una URL falla. El mock expone las tres: hasValue()=false + status()='loading'
 // simulan "recurso sin resolver" (value()=undefined) → gltfData()/bandMap() dan undefined (sin
@@ -109,7 +131,7 @@ vi.mock('angular-three-soba/loaders', () => ({
 			value: () => gltfMock.data,
 			scene: () => null,
 			hasValue: () => gltfMock.data !== undefined,
-			status: () => (gltfMock.data === undefined ? 'loading' : 'resolved'),
+			status: () => gltfMock.status ?? (gltfMock.data === undefined ? 'loading' : 'resolved'),
 		};
 	},
 	textureResource: (input: () => string) => {
@@ -117,7 +139,7 @@ vi.mock('angular-three-soba/loaders', () => ({
 		return {
 			value: () => textureMock.data,
 			hasValue: () => textureMock.data !== undefined,
-			status: () => (textureMock.data === undefined ? 'loading' : 'resolved'),
+			status: () => textureMock.status ?? (textureMock.data === undefined ? 'loading' : 'resolved'),
 		};
 	},
 }));
@@ -172,19 +194,26 @@ const CONFIG: Products3dConfig = {
 // con worldSingleton/rapier a null los joints quedan en espera y nunca tocan Rapier.
 // La escena real (bodies, colliders, joints activos) se verifica en playground (Nivel 3):
 // montar el template ngt-* en jsdom sin WebGL no es viable ni deseable (verification.md).
+// `rapierValue` = null por defecto; los tests del drag lo sustituyen por el enum de tipos de body
+// (lo único del namespace de Rapier que lee la escena) para que el drag no se corte por falta de WASM.
+const physicsMock = { rapierValue: null as unknown };
 const PHYSICS_MOCK = {
 	worldSingleton: () => null,
-	rapier: () => null,
+	rapier: () => physicsMock.rapierValue,
 };
 
 // Mock del store de angular-three (NGT_STORE): expone `size` como signal (alimenta la
 // `resolution` reactiva de la MeshLineMaterial) y `snapshot.internal.subscribe` (usado por
 // `beforeRender`). El subscribe REGISTRA cada callback con su prioridad y nunca lo invoca por su
 // cuenta: solo los tests del loop (runFrame) ejecutan frames, en el orden de prioridad del loop real.
+// `gl` es un renderer fake con lo único que usa la escena (`compileAsync`, la precompilación del
+// arranque): por defecto resuelve en la siguiente microtarea, como con KHR_parallel_shader_compile.
 interface FrameState {
 	delta: number;
 	camera: PerspectiveCamera;
 	pointer: Vector2;
+	gl: { compileAsync: ReturnType<typeof vi.fn> };
+	scene: Scene;
 }
 interface FrameSubscription {
 	callback: (state: FrameState) => void;
@@ -262,12 +291,150 @@ function clipMaterialOf(data: TestGltf): MeshStandardMaterial {
 	return data.nodes.clip.material as MeshStandardMaterial;
 }
 
+// ── Bodies fake y loop de frames (tests de la correa y del gate de arranque) ─────────────────────
+
+type BodyName = 'fixed' | 'j1' | 'j2' | 'j3' | 'card';
+type Tuple = [number, number, number];
+
+/**
+ * Rigid body crudo de Rapier (fake): lo que tocan la entrada, el gate de arranque y los guards del
+ * loop. `isEnabled`/`setEnabled` guardan estado de verdad (el gate los lee y los escribe).
+ */
+interface FakeRawBody {
+	translation: () => { x: number; y: number; z: number };
+	rotation: () => { x: number; y: number; z: number; w: number };
+	angvel: () => { x: number; y: number; z: number };
+	setAngvel: ReturnType<typeof vi.fn>;
+	wakeUp: ReturnType<typeof vi.fn>;
+	setNextKinematicTranslation: ReturnType<typeof vi.fn>;
+	setBodyType: ReturnType<typeof vi.fn>;
+	isEnabled: () => boolean;
+	setEnabled: ReturnType<typeof vi.fn>;
+}
+
+/** Pose RENDERIZADA (Object3D) y pose FÍSICA cruda (raw), deliberadamente distintas. */
+interface FakeBody {
+	object: Object3D;
+	raw: FakeRawBody | null;
+}
+
+// Pose renderizada de referencia (cadena colgando) y un desfase grande para la cruda: si el
+// componente leyera rigidBody().translation(), los puntos caerían 10 uds más allá.
+const RENDERED: Record<BodyName, Tuple> = {
+	fixed: [0.5, 4, 0],
+	j1: [0.5, 3, 0],
+	j2: [0.5, 2, 0],
+	j3: [0.5, 1, 0],
+	card: [0.5, -0.4, 0],
+};
+const RAW_OFFSET = 10;
+
+function fakeBody(rendered: Tuple): FakeBody {
+	const object = new Object3D();
+	object.position.set(...rendered);
+	const raw = rendered.map((v) => v + RAW_OFFSET);
+	let enabled = true;
+	return {
+		object,
+		raw: {
+			translation: () => ({ x: raw[0], y: raw[1], z: raw[2] }),
+			rotation: () => ({ x: 0, y: 0, z: 0, w: 1 }),
+			angvel: () => ({ x: 0, y: 0, z: 0 }),
+			setAngvel: vi.fn(),
+			wakeUp: vi.fn(),
+			setNextKinematicTranslation: vi.fn(),
+			setBodyType: vi.fn(),
+			isEnabled: () => enabled,
+			setEnabled: vi.fn((value: boolean) => {
+				enabled = value;
+			}),
+		},
+	};
+}
+
+function fakeBodies(): Record<BodyName, FakeBody> {
+	return {
+		fixed: fakeBody(RENDERED.fixed),
+		j1: fakeBody(RENDERED.j1),
+		j2: fakeBody(RENDERED.j2),
+		j3: fakeBody(RENDERED.j3),
+		card: fakeBody(RENDERED.card),
+	};
+}
+
+/**
+ * Sustituye las viewChild de la escena (el template es vacío en test) por bodies fake con la
+ * forma pública de NgtrRigidBody (`rigidBody()` + `objectRef`) y por la geometría de meshline.
+ * Devuelve el espía de `setPoints`.
+ */
+function rigScene(
+	fixture: ComponentFixture<Products3dBadgeScene>,
+	bodies: Record<BodyName, FakeBody>,
+): ReturnType<typeof vi.fn> {
+	const setPoints = vi.fn();
+	const target = fixture.componentInstance as unknown as Record<string, unknown>;
+	const asViewChild = (body: FakeBody) => () => ({
+		rigidBody: () => body.raw,
+		objectRef: { nativeElement: body.object },
+	});
+	target['fixedBody'] = asViewChild(bodies.fixed);
+	target['j1Body'] = asViewChild(bodies.j1);
+	target['j2Body'] = asViewChild(bodies.j2);
+	target['j3Body'] = asViewChild(bodies.j3);
+	target['cardBody'] = asViewChild(bodies.card);
+	target['bandGeometry'] = () => ({ nativeElement: { setPoints } });
+	return setPoints;
+}
+
+/** Estado de frame reutilizable: cámara, escena y renderer fake (ver `FrameState`). */
+function frameState(): FrameState {
+	return {
+		delta: 1 / 60,
+		camera: new PerspectiveCamera(),
+		pointer: new Vector2(),
+		gl: { compileAsync: vi.fn(() => Promise.resolve()) },
+		scene: new Scene(),
+	};
+}
+
+/** Un frame del loop: callbacks por prioridad ascendente (orden estable), como angular-three. */
+function runFrame(
+	extra: FrameSubscription[] = [],
+	maxPriority = Infinity,
+	state: FrameState = frameState(),
+): void {
+	[...frameSubscriptions, ...extra]
+		.filter((subscription) => subscription.priority <= maxPriority)
+		.sort((a, b) => a.priority - b.priority)
+		.forEach((subscription) => subscription.callback(state));
+}
+
+/** Deja que resuelvan las promesas pendientes (la de `compileAsync` y su `.then`). */
+async function flushMicrotasks(): Promise<void> {
+	await Promise.resolve();
+	await Promise.resolve();
+}
+
+/**
+ * Lleva la escena al estado suelto por el camino REAL del gate: GLB y correa resueltos (los mocks
+ * deben fijarse antes de `createScene`), frente listo, un frame que lanza la precompilación y la
+ * microtarea en la que resuelve.
+ */
+async function releaseScene(fixture: ComponentFixture<Products3dBadgeScene>): Promise<void> {
+	(fixture.componentInstance as unknown as { onFrontReady: () => void }).onFrontReady();
+	runFrame();
+	await flushMicrotasks();
+}
+
 describe('Products3dBadgeScene', () => {
 	beforeEach(() => {
 		// Por defecto el GLB y la textura de la correa quedan SIN resolver (los tests del tinte y
 		// del teselado los sobrescriben): así el estado de los mocks no se filtra de un test a otro.
 		gltfMock.data = undefined;
+		gltfMock.status = undefined;
 		textureMock.data = undefined;
+		textureMock.status = undefined;
+		physicsMock.rapierValue = null;
 		frameSubscriptions.length = 0;
 	});
 
@@ -318,10 +485,29 @@ describe('Products3dBadgeScene', () => {
 		expect(internals.cardColliderArgs).toBe(BADGE_PHYSICS.cardColliderHalfExtents);
 	});
 
-	it('takes body positions from badge.config', () => {
+	it('starts the bodies from the drop pose above the viewport (badgeDropLayout)', () => {
+		// jsdom no tiene matchMedia ⇒ sin preferencia de movimiento reducido ⇒ caída.
 		const fixture = createScene();
 
-		expect(internalsOf(fixture).layout).toBe(BADGE_LAYOUT);
+		expect(internalsOf(fixture).layout).toEqual(badgeDropLayout());
+		expect(internalsOf(fixture).layout.cardPosition[1]).toBeGreaterThan(
+			BADGE_LAYOUT.fixedPosition[1],
+		);
+	});
+
+	it('starts the bodies already at rest (BADGE_LAYOUT) with prefers-reduced-motion: reduce', () => {
+		const matchMedia = vi.fn((query: string) => ({
+			matches: query === BADGE_LOADING.reducedMotionQuery,
+		}));
+		Object.defineProperty(window, 'matchMedia', { configurable: true, value: matchMedia });
+		try {
+			const fixture = createScene();
+
+			expect(internalsOf(fixture).layout).toBe(BADGE_LAYOUT);
+			expect(matchMedia).toHaveBeenCalledWith(BADGE_LOADING.reducedMotionQuery);
+		} finally {
+			delete (window as { matchMedia?: unknown }).matchMedia;
+		}
 	});
 
 	it('positions the GLB visual group at the rigid body origin (BADGE_CARD_MODEL.groupPosition)', () => {
@@ -734,100 +920,6 @@ describe('Products3dBadgeScene', () => {
 		});
 	});
 	describe('lanyard band loop (rendered pose, clamp slot, arc length)', () => {
-		type BodyName = 'fixed' | 'j1' | 'j2' | 'j3' | 'card';
-		type Tuple = [number, number, number];
-
-		/** Rigid body crudo de Rapier (fake): solo lo que tocan la entrada y los guards del loop. */
-		interface FakeRawBody {
-			translation: () => { x: number; y: number; z: number };
-			rotation: () => { x: number; y: number; z: number; w: number };
-			angvel: () => { x: number; y: number; z: number };
-			setAngvel: ReturnType<typeof vi.fn>;
-			wakeUp: ReturnType<typeof vi.fn>;
-			setNextKinematicTranslation: ReturnType<typeof vi.fn>;
-		}
-
-		/** Pose RENDERIZADA (Object3D) y pose FÍSICA cruda (raw), deliberadamente distintas. */
-		interface FakeBody {
-			object: Object3D;
-			raw: FakeRawBody | null;
-		}
-
-		// Pose renderizada de referencia (cadena colgando) y un desfase grande para la cruda: si el
-		// componente leyera rigidBody().translation(), los puntos caerían 10 uds más allá.
-		const RENDERED: Record<BodyName, Tuple> = {
-			fixed: [0.5, 4, 0],
-			j1: [0.5, 3, 0],
-			j2: [0.5, 2, 0],
-			j3: [0.5, 1, 0],
-			card: [0.5, -0.4, 0],
-		};
-		const RAW_OFFSET = 10;
-
-		function fakeBody(rendered: Tuple): FakeBody {
-			const object = new Object3D();
-			object.position.set(...rendered);
-			const raw = rendered.map((v) => v + RAW_OFFSET);
-			return {
-				object,
-				raw: {
-					translation: () => ({ x: raw[0], y: raw[1], z: raw[2] }),
-					rotation: () => ({ x: 0, y: 0, z: 0, w: 1 }),
-					angvel: () => ({ x: 0, y: 0, z: 0 }),
-					setAngvel: vi.fn(),
-					wakeUp: vi.fn(),
-					setNextKinematicTranslation: vi.fn(),
-				},
-			};
-		}
-
-		function fakeBodies(): Record<BodyName, FakeBody> {
-			return {
-				fixed: fakeBody(RENDERED.fixed),
-				j1: fakeBody(RENDERED.j1),
-				j2: fakeBody(RENDERED.j2),
-				j3: fakeBody(RENDERED.j3),
-				card: fakeBody(RENDERED.card),
-			};
-		}
-
-		/**
-		 * Sustituye las viewChild de la escena (el template es vacío en test) por bodies fake con la
-		 * forma pública de NgtrRigidBody (`rigidBody()` + `objectRef`) y por la geometría de meshline.
-		 * Devuelve el espía de `setPoints`.
-		 */
-		function rigScene(
-			fixture: ComponentFixture<Products3dBadgeScene>,
-			bodies: Record<BodyName, FakeBody>,
-		): ReturnType<typeof vi.fn> {
-			const setPoints = vi.fn();
-			const target = fixture.componentInstance as unknown as Record<string, unknown>;
-			const asViewChild = (body: FakeBody) => () => ({
-				rigidBody: () => body.raw,
-				objectRef: { nativeElement: body.object },
-			});
-			target['fixedBody'] = asViewChild(bodies.fixed);
-			target['j1Body'] = asViewChild(bodies.j1);
-			target['j2Body'] = asViewChild(bodies.j2);
-			target['j3Body'] = asViewChild(bodies.j3);
-			target['cardBody'] = asViewChild(bodies.card);
-			target['bandGeometry'] = () => ({ nativeElement: { setPoints } });
-			return setPoints;
-		}
-
-		/** Un frame del loop: callbacks por prioridad ascendente (orden estable), como angular-three. */
-		function runFrame(extra: FrameSubscription[] = [], maxPriority = Infinity): void {
-			const state: FrameState = {
-				delta: 1 / 60,
-				camera: new PerspectiveCamera(),
-				pointer: new Vector2(),
-			};
-			[...frameSubscriptions, ...extra]
-				.filter((subscription) => subscription.priority <= maxPriority)
-				.sort((a, b) => a.priority - b.priority)
-				.forEach((subscription) => subscription.callback(state));
-		}
-
 		function bandPointsOf(fixture: ComponentFixture<Products3dBadgeScene>): Vector3[] {
 			return (fixture.componentInstance as unknown as { bandPoints: Vector3[] }).bandPoints;
 		}
@@ -954,10 +1046,15 @@ describe('Products3dBadgeScene', () => {
 			expect(spacingRatio(points)).toBeLessThan(1.02);
 		});
 
-		it('applies the drag target before the physics step, without touching the band yet', () => {
+		it('applies the drag target before the physics step, without touching the band yet', async () => {
+			// El drag solo existe con el badge ya suelto (gate de arranque): se suelta por el camino real.
+			gltfMock.data = makeGltfData();
+			textureMock.data = { image: { width: 512, height: 128 } };
 			const fixture = createScene();
 			const bodies = fakeBodies();
 			const setPoints = rigScene(fixture, bodies);
+			await releaseScene(fixture);
+			setPoints.mockClear();
 			const internals = fixture.componentInstance as unknown as {
 				dragged: { set: (value: boolean) => void };
 			};
@@ -978,6 +1075,359 @@ describe('Products3dBadgeScene', () => {
 			runFrame();
 
 			expect(setPoints).not.toHaveBeenCalled();
+		});
+	});
+
+	describe('startup gate (loading, precompile, drop)', () => {
+		const DYNAMIC: BodyName[] = ['j1', 'j2', 'j3', 'card'];
+
+		interface GateInternals {
+			released: () => boolean;
+			hovered: () => boolean;
+			dragged: () => boolean;
+			onFrontReady: () => void;
+			onPointerDown: (event: unknown) => void;
+			onPointerOver: (event: unknown) => void;
+		}
+
+		function gateOf(fixture: ComponentFixture<Products3dBadgeScene>): GateInternals {
+			return fixture.componentInstance as unknown as GateInternals;
+		}
+
+		/** Cuenta las emisiones del output `ready` de la escena. */
+		function countReady(fixture: ComponentFixture<Products3dBadgeScene>): () => number {
+			let emissions = 0;
+			fixture.componentInstance.ready.subscribe(() => {
+				emissions += 1;
+			});
+			return () => emissions;
+		}
+
+		function enabledOf(bodies: Record<BodyName, FakeBody>): boolean[] {
+			return DYNAMIC.map((name) => bodies[name].raw?.isEnabled() ?? false);
+		}
+
+		/** GLB y correa ya resueltos (el frente se marca aparte con onFrontReady). */
+		function resolveSceneResources(): void {
+			gltfMock.data = makeGltfData();
+			textureMock.data = { image: { width: 512, height: 128 } };
+		}
+
+		/** Evento de puntero mínimo que tocan los handlers de drag/hover. */
+		function pointerEvent(): Record<string, unknown> {
+			return {
+				stopPropagation: vi.fn(),
+				pointerId: 1,
+				point: new Vector3(),
+				target: { setPointerCapture: vi.fn(), releasePointerCapture: vi.fn() },
+			};
+		}
+
+		afterEach(() => {
+			vi.useRealTimers();
+			vi.restoreAllMocks();
+		});
+
+		it('keeps the chain frozen and emits nothing while every resource is still loading', async () => {
+			const fixture = createScene();
+			const bodies = fakeBodies();
+			rigScene(fixture, bodies);
+			const ready = countReady(fixture);
+			const state = frameState();
+
+			runFrame([], Infinity, state);
+			runFrame([], Infinity, state);
+			await flushMicrotasks();
+
+			// Los cuatro bodies dinámicos deshabilitados ANTES del paso de Rapier; el fijo no se toca.
+			expect(enabledOf(bodies)).toEqual([false, false, false, false]);
+			expect(bodies.fixed.raw?.setEnabled).not.toHaveBeenCalled();
+			expect(state.gl.compileAsync).not.toHaveBeenCalled();
+			expect(ready()).toBe(0);
+			expect(gateOf(fixture).released()).toBe(false);
+		});
+
+		it.each<[string, () => void]>([
+			['the card GLB', () => (gltfMock.data = undefined)],
+			['the band texture', () => (textureMock.data = undefined)],
+		])('does not release while %s is still loading', async (_name, unresolve) => {
+			resolveSceneResources();
+			unresolve();
+			const fixture = createScene();
+			const bodies = fakeBodies();
+			rigScene(fixture, bodies);
+			const ready = countReady(fixture);
+
+			await releaseScene(fixture);
+
+			expect(ready()).toBe(0);
+			expect(enabledOf(bodies)).toEqual([false, false, false, false]);
+		});
+
+		it('does not release while the card front (base texture + font) is still loading', async () => {
+			resolveSceneResources();
+			const fixture = createScene();
+			const bodies = fakeBodies();
+			rigScene(fixture, bodies);
+			const ready = countReady(fixture);
+			const state = frameState();
+
+			runFrame([], Infinity, state);
+			await flushMicrotasks();
+
+			expect(state.gl.compileAsync).not.toHaveBeenCalled();
+			expect(ready()).toBe(0);
+
+			// El frente termina: el frame siguiente ya precompila y suelta.
+			gateOf(fixture).onFrontReady();
+			runFrame([], Infinity, state);
+			await flushMicrotasks();
+
+			expect(ready()).toBe(1);
+		});
+
+		it('precompiles the scene with its camera, then releases the chain and emits ready once', async () => {
+			resolveSceneResources();
+			const fixture = createScene();
+			const bodies = fakeBodies();
+			rigScene(fixture, bodies);
+			const ready = countReady(fixture);
+			gateOf(fixture).onFrontReady();
+			const state = frameState();
+
+			runFrame([], Infinity, state);
+
+			expect(state.gl.compileAsync).toHaveBeenCalledTimes(1);
+			expect(state.gl.compileAsync).toHaveBeenCalledWith(state.scene, state.camera);
+			// Hasta que los shaders están listos sigue todo congelado y oculto.
+			expect(ready()).toBe(0);
+			expect(gateOf(fixture).released()).toBe(false);
+
+			await flushMicrotasks();
+
+			expect(ready()).toBe(1);
+			expect(gateOf(fixture).released()).toBe(true);
+			expect(enabledOf(bodies)).toEqual([true, true, true, true]);
+			for (const name of DYNAMIC) {
+				expect(bodies[name].raw?.wakeUp).toHaveBeenCalled();
+			}
+
+			// Frames posteriores: ni otra compilación, ni otro ready, ni vuelta a congelar.
+			runFrame([], Infinity, state);
+			runFrame([], Infinity, state);
+			await flushMicrotasks();
+			expect(state.gl.compileAsync).toHaveBeenCalledTimes(1);
+			expect(ready()).toBe(1);
+			expect(enabledOf(bodies)).toEqual([true, true, true, true]);
+		});
+
+		it('waits for compileAsync to resolve before dropping (no shader hitch on the first frame)', async () => {
+			resolveSceneResources();
+			const fixture = createScene();
+			const bodies = fakeBodies();
+			rigScene(fixture, bodies);
+			const ready = countReady(fixture);
+			gateOf(fixture).onFrontReady();
+			let finishCompile: () => void = () => undefined;
+			const state = frameState();
+			state.gl.compileAsync.mockImplementation(
+				() =>
+					new Promise<void>((resolve) => {
+						finishCompile = resolve;
+					}),
+			);
+
+			runFrame([], Infinity, state);
+			runFrame([], Infinity, state);
+			await flushMicrotasks();
+
+			expect(ready()).toBe(0);
+			expect(enabledOf(bodies)).toEqual([false, false, false, false]);
+
+			finishCompile();
+			await flushMicrotasks();
+
+			expect(ready()).toBe(1);
+			expect(enabledOf(bodies)).toEqual([true, true, true, true]);
+		});
+
+		it('counts resources in error as finished: a broken GLB and band texture do not block', async () => {
+			vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+			// Sin GLB no hay tarjeta ni frente: no se espera al frente (nunca llegaría su ready).
+			gltfMock.status = 'error';
+			textureMock.status = 'error';
+			const fixture = createScene();
+			const bodies = fakeBodies();
+			rigScene(fixture, bodies);
+			const ready = countReady(fixture);
+
+			runFrame();
+			await flushMicrotasks();
+
+			expect(ready()).toBe(1);
+			expect(enabledOf(bodies)).toEqual([true, true, true, true]);
+		});
+
+		it('releases with whatever loaded when the timeout expires, with a dev warning', () => {
+			vi.useFakeTimers();
+			const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+			const fixture = createScene();
+			const bodies = fakeBodies();
+			rigScene(fixture, bodies);
+			const ready = countReady(fixture);
+			runFrame();
+
+			vi.advanceTimersByTime(BADGE_LOADING.timeoutMs - 1);
+			expect(ready()).toBe(0);
+			expect(warn).not.toHaveBeenCalled();
+
+			vi.advanceTimersByTime(1);
+
+			expect(ready()).toBe(1);
+			expect(gateOf(fixture).released()).toBe(true);
+			expect(enabledOf(bodies)).toEqual([true, true, true, true]);
+			expect(warn).toHaveBeenCalledTimes(1);
+			const message = String(warn.mock.calls[0][0]);
+			expect(message).toContain('[ngx-products-3d]');
+			expect(message).toContain(`${BADGE_LOADING.timeoutMs} ms`);
+			// Dice qué faltaba: el campo que configura cada recurso pendiente.
+			expect(message).toContain('config.cardModelUrl');
+			expect(message).toContain('theme.bandTextureUrl');
+
+			// Y ya no vuelve a congelar en los frames siguientes.
+			runFrame();
+			expect(enabledOf(bodies)).toEqual([true, true, true, true]);
+		});
+
+		it('does not release the chain nor emit ready when compileAsync resolves after destroy', async () => {
+			resolveSceneResources();
+			const fixture = createScene();
+			const bodies = fakeBodies();
+			rigScene(fixture, bodies);
+			let emissions = 0;
+			fixture.componentInstance.ready.subscribe(() => {
+				emissions += 1;
+			});
+			gateOf(fixture).onFrontReady();
+			let finishCompile: () => void = () => undefined;
+			const state = frameState();
+			state.gl.compileAsync.mockImplementation(
+				() =>
+					new Promise<void>((resolve) => {
+						finishCompile = resolve;
+					}),
+			);
+			runFrame([], Infinity, state);
+			expect(state.gl.compileAsync).toHaveBeenCalledTimes(1);
+
+			fixture.destroy();
+			finishCompile();
+			await flushMicrotasks();
+
+			// Ni un thaw sobre bodies de un mundo que ya se está desmontando, ni ready tardío.
+			for (const name of DYNAMIC) {
+				expect(bodies[name].raw?.setEnabled).not.toHaveBeenCalledWith(true);
+				expect(bodies[name].raw?.wakeUp).not.toHaveBeenCalled();
+			}
+			expect(enabledOf(bodies)).toEqual([false, false, false, false]);
+			expect(emissions).toBe(0);
+		});
+
+		it('does not warn nor release late once the scene is destroyed (timer cleared)', () => {
+			vi.useFakeTimers();
+			const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+			const fixture = createScene();
+			rigScene(fixture, fakeBodies());
+			const ready = countReady(fixture);
+
+			fixture.destroy();
+			vi.advanceTimersByTime(BADGE_LOADING.timeoutMs);
+
+			expect(warn).not.toHaveBeenCalled();
+			expect(ready()).toBe(0);
+		});
+
+		it('clears the timeout on a normal release (no late warning after the drop)', async () => {
+			// Timers falsos ANTES de crear la escena: el tope se arma en el constructor.
+			vi.useFakeTimers();
+			resolveSceneResources();
+			const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+			const fixture = createScene();
+			rigScene(fixture, fakeBodies());
+			const ready = countReady(fixture);
+			await releaseScene(fixture);
+			expect(ready()).toBe(1);
+
+			vi.advanceTimersByTime(BADGE_LOADING.timeoutMs);
+
+			expect(warn).not.toHaveBeenCalled();
+		});
+
+		it('never hides or freezes again after the drop: a later theme change applies in place', async () => {
+			resolveSceneResources();
+			const fixture = createScene();
+			const bodies = fakeBodies();
+			rigScene(fixture, bodies);
+			const ready = countReady(fixture);
+			await releaseScene(fixture);
+			const instance = fixture.componentInstance;
+			const freezes = () =>
+				DYNAMIC.flatMap((name) => bodies[name].raw?.setEnabled.mock.calls ?? []).filter(
+					(call) => call[0] === false,
+				).length;
+			const freezesAtRelease = freezes();
+
+			// Tema nuevo (otra textura de correa) y un segundo ready del frente, como al cambiar de tier.
+			fixture.componentRef.setInput('theme', { ...THEME, bandTextureUrl: 'assets/band-2.png' });
+			fixture.detectChanges();
+			gateOf(fixture).onFrontReady();
+			runFrame();
+			runFrame();
+			await flushMicrotasks();
+
+			expect(fixture.componentInstance).toBe(instance);
+			expect(gateOf(fixture).released()).toBe(true);
+			expect(freezes()).toBe(freezesAtRelease);
+			expect(enabledOf(bodies)).toEqual([true, true, true, true]);
+			expect(ready()).toBe(1);
+		});
+
+		it('ignores drag and hover while loading, and allows them once released', async () => {
+			physicsMock.rapierValue = { RigidBodyType: { KinematicPositionBased: 2, Dynamic: 0 } };
+			resolveSceneResources();
+			const fixture = createScene();
+			const bodies = fakeBodies();
+			rigScene(fixture, bodies);
+			const gate = gateOf(fixture);
+
+			gate.onPointerDown(pointerEvent());
+			gate.onPointerOver(pointerEvent());
+
+			expect(bodies.card.raw?.setBodyType).not.toHaveBeenCalled();
+			expect(gate.dragged()).toBe(false);
+			expect(gate.hovered()).toBe(false);
+
+			await releaseScene(fixture);
+			gate.onPointerDown(pointerEvent());
+			gate.onPointerOver(pointerEvent());
+
+			expect(bodies.card.raw?.setBodyType).toHaveBeenCalledWith(2, true);
+			expect(gate.dragged()).toBe(true);
+			expect(gate.hovered()).toBe(true);
+		});
+
+		it('binds the card and the band visibility to the release, and listens to the front ready', () => {
+			const metadata = Products3dBadgeScene as unknown as {
+				decorators?: { args?: { template?: string }[] }[];
+			};
+			const template = metadata.decorators?.[0]?.args?.[0]?.template ?? '';
+			const cardTag = /<ngt-object3D\s+#cardBody[^>]*>/.exec(template)?.[0] ?? '';
+			const bandTag = /<ngt-mesh\b[^>]*>\s*<ngt-mesh-line-geometry/.exec(template)?.[0] ?? '';
+			const frontTag = /<products-3d-badge-texture\b[^>]*\/>/.exec(template)?.[0] ?? '';
+
+			expect(cardTag).toContain('[visible]="released()"');
+			expect(bandTag).toContain('[visible]="released()"');
+			expect(frontTag).toContain('(ready)="onFrontReady()"');
 		});
 	});
 });

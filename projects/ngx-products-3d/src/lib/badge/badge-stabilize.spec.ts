@@ -1,5 +1,6 @@
 import { Vector3 } from 'three';
 import { clamp, lerpTowards, spinCorrectedAngvelY } from './badge-stabilize';
+import { BADGE_PHYSICS } from './badge.config';
 
 describe('clamp', () => {
 	it('returns the value untouched when inside the range', () => {
@@ -17,13 +18,13 @@ describe('clamp', () => {
 
 describe('lerpTowards', () => {
 	it('advances out toward target by delta * (minSpeed + distance * (maxSpeed − minSpeed))', () => {
-		// distance 0.5 in [0.1, 1] → alpha = 0.1 * (10 + 0.5 * 40) = 3 → out.x = 0.5 * 3
+		// distance 0.5 in [0.1, 1] → alpha = 0.01 * (10 + 0.5 * 40) = 0.3 → out.x = 0.5 * 0.3
 		const out = new Vector3(0, 0, 0);
 
-		const result = lerpTowards({ x: 0.5, y: 0, z: 0 }, 0.1, 10, 50, 0.1, 1, out);
+		const result = lerpTowards({ x: 0.5, y: 0, z: 0 }, 0.01, 10, 50, 0.1, 1, out);
 
 		expect(result).toBe(out);
-		expect(result.x).toBeCloseTo(1.5, 10);
+		expect(result.x).toBeCloseTo(0.15, 10);
 		expect(result.y).toBe(0);
 		expect(result.z).toBe(0);
 	});
@@ -38,13 +39,42 @@ describe('lerpTowards', () => {
 	});
 
 	it('clamps the distance to clampMin when target is very close (no acceleration on noise)', () => {
-		// distance 0.05 → clamped to 0.1 → alpha = 0.5 * (10 + 0.1 * 40) = 7 → out.x = 0.05 * 7 = 0.35
-		// Sin clamp sería 0.5 * (10 + 0.05 * 40) = 6 → 0.3; el 0.35 discrimina el clamp inferior.
+		// distance 0.05 → clamped to 0.1 → alpha = 0.05 * (10 + 0.1 * 40) = 0.7 → out.x = 0.05 * 0.7
+		// Sin clamp sería 0.05 * (10 + 0.05 * 40) = 0.6 → 0.03; el 0.035 discrimina el clamp inferior.
+		// (Antes este test usaba delta 0.5, alpha 7: fijaba justo el sobrepaso que ahora se acota.)
 		const out = new Vector3(0, 0, 0);
 
-		lerpTowards({ x: 0.05, y: 0, z: 0 }, 0.5, 10, 50, 0.1, 1, out);
+		lerpTowards({ x: 0.05, y: 0, z: 0 }, 0.05, 10, 50, 0.1, 1, out);
 
-		expect(out.x).toBeCloseTo(0.35, 10);
+		expect(out.x).toBeCloseTo(0.035, 10);
+	});
+
+	it('never overshoots the target when delta * speed exceeds 1 (alpha capped at 1)', () => {
+		// distance 0.5 → alpha sin tope = 0.1 * (10 + 0.5 * 40) = 3 → out.x = 1.5, el triple del
+		// objetivo. Con el tope, alpha = 1 → aterriza exactamente en el objetivo.
+		const out = new Vector3(0, 0, 0);
+
+		lerpTowards({ x: 0.5, y: -0.25, z: 0.125 }, 0.1, 10, 50, 0.1, 1, out);
+
+		expect(out.toArray()).toEqual([0.5, -0.25, 0.125]);
+	});
+
+	it('lands on the target on a 30 fps frame with the real BADGE_PHYSICS speeds', () => {
+		// Caso real del arranque: un frame lento (1/30 s) con el segmento a 1 ud → alpha sin tope =
+		// (1/30) * 50 ≈ 1.67 y la correa se pasaría de largo 0.67 uds.
+		const out = new Vector3(0, 0, 0);
+
+		lerpTowards(
+			{ x: 0, y: -1, z: 0 },
+			1 / 30,
+			BADGE_PHYSICS.minSpeed,
+			BADGE_PHYSICS.maxSpeed,
+			BADGE_PHYSICS.lerpClampMin,
+			BADGE_PHYSICS.lerpClampMax,
+			out,
+		);
+
+		expect(out.y).toBe(-1);
 	});
 
 	it('reuses the same out instance across calls (no per-frame allocations)', () => {

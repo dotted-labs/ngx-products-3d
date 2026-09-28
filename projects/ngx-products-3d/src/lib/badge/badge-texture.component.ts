@@ -5,6 +5,7 @@ import {
 	CUSTOM_ELEMENTS_SCHEMA,
 	effect,
 	input,
+	output,
 	resource,
 	type Signal,
 	untracked,
@@ -21,6 +22,7 @@ import { textureResource, type NgtsFontInput } from 'angular-three-soba/loaders'
 import { resourceValueOrUndefined } from '../resource-value';
 import type { BadgeMemberData, Products3dBadgeTheme } from '../types';
 import { isOpentypeFontUrl, loadOpentypeFontData } from './badge-font';
+import { frontSettled, textMeshesBuilt } from './badge-loading';
 import { resolveBaseColor } from './badge-theme';
 import {
 	alignOffsetX,
@@ -113,6 +115,13 @@ import { BADGE_FRONT_FACE, BADGE_TEXT, BADGE_TEXT_LAYOUT, BADGE_TEXTURE } from '
 export class Products3dBadgeTexture {
 	readonly member = input.required<BadgeMemberData>();
 	readonly theme = input.required<Products3dBadgeTheme>();
+
+	/**
+	 * El frente terminó de cargar por primera vez: textura base del tier resuelta o en error, y fuente
+	 * en error o con todos los textos ya construidos (`frontSettled`). Una sola vez por instancia: la
+	 * escena solo lo usa para el arranque, y los cambios posteriores de theme/member se pintan en sitio.
+	 */
+	readonly ready = output<void>();
 
 	private readonly textNodes = viewChildren(NgtsText3D);
 
@@ -246,7 +255,39 @@ export class Products3dBadgeTexture {
 		}));
 	});
 
+	/**
+	 * Estado de carga del frente para el arranque de la escena (`frontSettled`). La fuente cuenta por
+	 * sus TEXTOS y no por su recurso: el typeface JSON lo carga `NgtsText3D` por dentro (su
+	 * `fontResource` es privado), así que la única señal común a los dos caminos es que los meshes ya
+	 * tengan su `TextGeometry`. Reactivo al attach por la misma signal `nonObjects` que usa
+	 * `fitTextMeshes`. Una fuente binaria en error cuenta como terminada: el frente queda sin textos.
+	 */
+	private readonly frontReady = computed(() =>
+		frontSettled({
+			baseTexture: this.baseTexture.status(),
+			fontFailed: this.opentypeFontUrl() !== undefined && this.opentypeFont.status() === 'error',
+			textsBuilt: textMeshesBuilt(
+				this.textNodes().map((text) => {
+					const mesh = text.meshRef().nativeElement;
+					getInstanceState(mesh)?.nonObjects();
+					return mesh;
+				}),
+				this.textSlots().length,
+			),
+		}),
+	);
+	private readyEmitted = false;
+
 	constructor() {
+		// Arranque de la escena: `ready` una sola vez, la primera vez que el frente termina de cargar.
+		effect(() => {
+			if (this.readyEmitted || !this.frontReady()) {
+				return;
+			}
+			this.readyEmitted = true;
+			this.ready.emit();
+		});
+
 		// colorSpace sRGB de la textura base, mutado tras resolver (patrón del spike S3: la
 		// firma del loader no expone la opción). One-shot por textura, no por frame.
 		effect(() => {
