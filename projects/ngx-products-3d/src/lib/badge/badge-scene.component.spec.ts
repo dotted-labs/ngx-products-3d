@@ -855,7 +855,7 @@ describe('Products3dBadgeScene', () => {
 
 			createSceneWithGltf(data, THEME);
 
-			// Con el default negro siempre hay color ⇒ el metal SIEMPRE se tiñe: la rama
+			// Con el default (#111111) siempre hay color ⇒ el metal SIEMPRE se tiñe: la rama
 			// "sin color → material original del GLB" ya no existe (spec-03-F4v2 R2).
 			expect(clipMaterialOf(data).color.getHexString()).toBe(BADGE_BASE_COLOR.slice(1));
 			expect(data.nodes.clip.material).not.toBe(data.materials.metal);

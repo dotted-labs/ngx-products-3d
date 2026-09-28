@@ -28,12 +28,14 @@ export const badgeRoute: Route = {
 		provideProducts3d({ cardModelUrl: '/assets/3d/membresia.glb' }),
 		provideProducts3dBadgeTheme({
 			bandTextureUrl: '/assets/3d/band.png',
+			// Arte del frente por tier: ratio 32:45 con alfa
 			baseTextures: {
-				gold: '/assets/3d/base-gold.jpg',
-				silver: '/assets/3d/base-silver.jpg',
+				gold: '/assets/3d/front-gold.webp',
+				silver: '/assets/3d/front-silver.webp',
 			},
-			defaultBaseTextureUrl: '/assets/3d/base-default.jpg',
-			fontUrl: '/assets/3d/font.json',
+			defaultBaseTextureUrl: '/assets/3d/front-default.webp',
+			// Typeface JSON de three, .otf o .ttf (autodetección por extensión)
+			fontUrl: '/assets/3d/font.otf',
 		}),
 	],
 	loadComponent: () => import('./membership.component'),
@@ -78,14 +80,19 @@ Reglas:
 | `theme` | `Products3dBadgeTheme` | no | Fallback: token `PRODUCTS_3D_BADGE_THEME` |
 | `debug` | `boolean` | no | Debug de física |
 
+| Output | Tipo | Descripción |
+|---|---|---|
+| `ready` | `void` | Una sola vez, cuando el badge se soltó: con todo cargado o al vencer el tope de carga (con `prefers-reduced-motion` aparece en reposo, sin caída) |
+
 ### `Products3dBadgeTheme`
 
 | Campo | Tipo | Requerido | Descripción |
 |---|---|---|---|
-| `bandTextureUrl` | `string` | sí | Textura de la correa (RepeatWrapping aplicado por la lib) |
-| `baseTextures` | `Record<string, string>` | sí | Textura base del frente por tier |
+| `bandTextureUrl` | `string` | sí | Textura de la correa: horizontal, tileable en X, alfa recomendada. El teselado lo deriva la lib del aspecto real (`bandRepeatFor`) |
+| `baseTextures` | `Record<string, string>` | sí | Arte del frente por tier (ratio 32:45 con alfa) |
 | `defaultBaseTextureUrl` | `string` | sí | Fallback si el tier no existe en `baseTextures` |
-| `fontUrl` | `string` | sí | Typeface JSON (three) para los textos 3D |
+| `fontUrl` | `string` | sí | Fuente de los textos 3D: typeface JSON de three, `.otf` o `.ttf` (autodetección por extensión) |
+| `baseColor` | `string` | no | Color base del modelo (fondo del frente y tinte de clip/clamp). Default `'#111111'` (`BADGE_BASE_COLOR`) |
 | `colors.band` | `string` | no | Tinte de la correa |
 | `colors.text` | `string` | no | Color de los textos |
 | `colors.clip` | `string` | no | Tinte del clip metálico |

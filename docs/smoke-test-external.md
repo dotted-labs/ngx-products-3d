@@ -58,8 +58,14 @@ auto-instala.
 
 ```bash
 mkdir -p public/assets
-cp <repo>/projects/products-3d-playground/public/assets/{membresia.glb,band.png,base-gold.png,base-silver.png,base-default.png,Ballega.otf} public/assets/
+cp <repo>/projects/products-3d-playground/public/assets/{membresia.glb,band.png,badge_vitality.png,Ballega.otf} public/assets/
 ```
+
+Son los cuatro assets reales del playground: el modelo, la correa (PNG con alfa), el arte del
+frente (`badge_vitality.png`, 32:45 con alfa) y la fuente OTF. Un solo arte basta para el smoke
+test: sirve para el tier `gold` del socio de prueba y de `defaultBaseTextureUrl`.
+`base-wrong-ratio.png` NO se copia: es el fixture del aviso de ratio del playground y en este
+runbook haría saltar un `[ngx-products-3d]` que la checklist exige que no aparezca.
 
 ## 5. Cablear la app (3 archivos)
 
@@ -94,10 +100,9 @@ export const badgeRoutes: Routes = [
 			provideProducts3dBadgeTheme({
 				bandTextureUrl: '/assets/band.png',
 				baseTextures: {
-					gold: '/assets/base-gold.png',
-					silver: '/assets/base-silver.png',
+					gold: '/assets/badge_vitality.png',
 				},
-				defaultBaseTextureUrl: '/assets/base-default.png',
+				defaultBaseTextureUrl: '/assets/badge_vitality.png',
 				fontUrl: '/assets/Ballega.otf',
 			}),
 		],
@@ -158,8 +163,10 @@ npx ng serve
 Checklist visual:
 
 - [ ] El placeholder aparece primero; al entrar en viewport se monta el canvas.
-- [ ] El badge cuelga de la correa texturizada y oscila (física Rapier activa).
-- [ ] El frente muestra la textura gold + «Smoke Test», «#0001» y «GOLD».
+- [ ] Mientras carga no se ve nada del badge; con todo cargado cae desde arriba y queda colgando
+      de la correa texturizada, oscilando (física Rapier activa).
+- [ ] El frente muestra el arte de `badge_vitality.png` y, abajo-izquierda, «GOLD», «Smoke Test»
+      y «#0001» con la fuente `Ballega.otf`.
 - [ ] Arrastrar la tarjeta con el puntero funciona (cursor grab/grabbing).
 - [ ] Consola sin errores (`404` de assets, `[ngx-products-3d]`, etc.).
 

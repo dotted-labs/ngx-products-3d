@@ -89,8 +89,10 @@ export const membershipRoutes: Routes = [
 					silver: '/assets/3d/front-silver.webp',
 				},
 				defaultBaseTextureUrl: '/assets/3d/front-default.webp',
-				fontUrl: '/assets/3d/font.json',
-				// Color del modelo: se ve por las zonas transparentes del arte y tiñe clip/clamp
+				// Typeface JSON de three, .otf o .ttf: la lib detecta el formato por la extensión
+				fontUrl: '/assets/3d/font.otf',
+				// Opcional. Color del modelo: se ve por las zonas transparentes del arte y tiñe
+				// clip/clamp. Aquí se pisa con un violeta; sin él, la lib usa BADGE_BASE_COLOR ('#111111')
 				baseColor: '#3b0764',
 				colors: {
 					band: '#ffe3c2',
@@ -196,7 +198,9 @@ frame no dé un tirón, y entonces lo suelta: la cadena y la tarjeta **caen desd
 por arriba** con física real y llegan con un poco de balanceo. En ese momento se emite `(ready)`.
 
 - **Un recurso en error cuenta como terminado**: el badge cae igual con el fallback de siempre
-  (correa de color plano, sin tarjeta, sin textos) y el aviso dev de cada recurso.
+  (correa de color plano, sin tarjeta, sin textos) y el aviso dev de cada recurso. Excepción: un
+  `fontUrl` de typeface JSON que no carga no se detecta como error (lo carga soba por dentro), así
+  que ese caso se resuelve por el tope de abajo.
 - **Tope**: si a los `BADGE_LOADING.timeoutMs` (10 s) algo sigue sin terminar, se suelta con lo que
   haya y se avisa en dev (`[ngx-products-3d]`, con lo que faltaba).
 - **Solo al arrancar**: cambiar `theme` o `member` después (otra textura, otra fuente) se aplica en
@@ -224,11 +228,11 @@ por arriba** con física real y llegan con un poco de balanceo. En ese momento s
 
 | Campo | Tipo | Requerido | Default | Para qué sirve |
 | --- | --- | --- | --- | --- |
-| `bandTextureUrl` | `string` | sí | — | Textura de la correa (lanyard). La lib aplica `RepeatWrapping` y **deriva** el teselado del aspecto real de la textura (`bandRepeatFor`), así que el arte solo tiene que ser tileable en X. Si la carga falla: color plano + warn en dev |
+| `bandTextureUrl` | `string` | sí | — | Textura de la correa (lanyard). La lib aplica `RepeatWrapping` y **deriva** el teselado del aspecto real de la textura (`bandRepeatFor`), así que el arte solo tiene que ser tileable en X; alfa recomendada (§ [Requisitos de los assets del tema](#requisitos-de-los-assets-del-tema)). Si la carga falla: color plano + warn en dev |
 | `baseTextures` | `Record<string, string>` | sí (puede ir `{}`) | — | Arte del frente de la tarjeta por tier (key = `BadgeMemberData.tier`). **`{}` es válido**: con el mapa vacío todos los tiers caen en `defaultBaseTextureUrl`. Contrato del fichero: § [Contrato del asset frontal](#contrato-del-asset-frontal) |
 | `defaultBaseTextureUrl` | `string` | sí (**validado en runtime**) | — | Fallback obligatorio cuando el tier del socio no existe en `baseTextures`. Es el único campo de arte del frente realmente obligatorio |
-| `fontUrl` | `string` | sí (**validado en runtime**) | — | Typeface JSON de three para los textos 3D del frente |
-| `baseColor` | `string` | no | `'#000000'` (`BADGE_BASE_COLOR`) | Color base del modelo. Ver el reparto abajo: **no** llega igual a todas las piezas |
+| `fontUrl` | `string` | sí (**validado en runtime**) | — | Fuente de los textos 3D del frente: typeface JSON de three, `.otf` o `.ttf`, con **autodetección por extensión** (§ [Requisitos de los assets del tema](#requisitos-de-los-assets-del-tema)) |
+| `baseColor` | `string` | no | `'#111111'` (`BADGE_BASE_COLOR`) | Color base del modelo. Ver el reparto abajo: **no** llega igual a todas las piezas |
 | `colors` | `object` | no | `{}` | Tintes opcionales |
 | `colors.band` | `string` | no | `'white'` | Tinte de la correa (se multiplica con la textura) |
 | `colors.text` | `string` | no | `'black'` | Color de los textos del socio. **Elígelo según tu arte**: el default negro sobre un frente oscuro queda al límite de legibilidad, y la lib no calcula contraste |
@@ -242,7 +246,7 @@ por arriba** con física real y llegan con un poco de balanceo. En ese momento s
 | Pieza | Cómo lo usa | Override |
 | --- | --- | --- |
 | **Frente de la tarjeta** | Pinta el quad de fondo **opaco** de la escena que se renderiza a textura, detrás del arte del tier: es lo que se ve por las zonas **transparentes** del asset | — (no hay campo específico) |
-| **clip y clamp** | Tinte del material `metal` del GLB, resuelto como `colors.clip ?? baseColor ?? '#000000'` | `colors.clip` |
+| **clip y clamp** | Tinte del material `metal` del GLB, resuelto como `colors.clip ?? baseColor ?? BADGE_BASE_COLOR` (`'#111111'`) | `colors.clip` |
 | **Canto y dorso de la tarjeta** | **Fuera de alcance**: comparten material y `map` con el frente, así que muestran lo que caiga en sus UV. `baseColor` no los controla | — |
 
 > `baseColor` **no** es el `color` del `MeshPhysicalMaterial` de la tarjeta, y no puede serlo: three
@@ -284,14 +288,42 @@ La lib **no empaqueta ningún asset**; los del playground del repo son solo demo
 consumidora aporta los suyos:
 
 - **Correa** (`bandTextureUrl`): cualquier formato que cargue `TextureLoader` de three (PNG, JPG,
-  WebP…). Arte **tileable en X**; el aspecto es libre, porque la lib deriva el número de teselas del
-  aspecto real de la textura cargada (`bandRepeatFor`): un arte muy alargado da **menos de una
-  tesela** y se corta por el extremo, y la solución es una tesela más corta, no configuración.
-  **Alfa recomendada** (PNG/WebP): el material de la correa declara `transparent`, así que las zonas
-  transparentes del arte no se pintan.
+  WebP…).
+  - **Horizontal y tileable en X**: el eje largo de la imagen es la longitud de la correa y su alto
+    cubre el ancho. La lib no gira la textura (el shader de meshline ignora `rotation`/`offset` de
+    la textura), así que un arte vertical hay que girarlo en el propio fichero.
+  - **El aspecto es libre**: no hay un 4:1 fijo. La lib deriva el número de teselas del aspecto
+    real (ancho/alto) de la textura ya cargada con `bandRepeatFor(aspect)`:
+    `teselas = longitud de la correa / (aspecto × ancho de la correa)`, con longitud =
+    `BADGE_BAND.ropeJoints × BADGE_PHYSICS.segmentLength` (3 uds) y ancho =
+    `BADGE_BAND.lineWidth × tan(BADGE_CAMERA.fov / 2)` (≈ 0.2217 uds). Así el arte nunca se estira ni
+    se comprime. Con la config por defecto, un aspecto 4:1 da ≈ 3.38 teselas y uno 10:1, ≈ 1.35.
+  - **Un arte muy alargado da `repeat` < 1** (menos de una tesela): a partir de un aspecto de
+    ≈ 13.5:1 no cabe entero en la correa y se corta por el extremo. La solución es una tesela más
+    corta en el asset, no configuración.
+  - **Alfa recomendada** (PNG/WebP): el material de la correa declara `transparent`, así que las
+    zonas transparentes del arte no se pintan y dejan ver lo que haya detrás. Sin alfa la correa es
+    opaca en toda su superficie. `colors.band` tiñe el arte (se multiplica con él).
+  - Si la textura no expone dimensiones medibles, el teselado cae al de un arte de referencia 4:1
+    (`BADGE_BAND.referenceTextureAspect`), nunca a `NaN`.
 - **Arte del frente** (`baseTextures`, `defaultBaseTextureUrl`): tiene contrato propio, § siguiente.
-- **Fuente** (`fontUrl`): typeface **JSON** de three (formato de `FontLoader`), NO `.ttf`/`.woff`.
-  Convierte tu fuente con [facetype.js](https://gero3.github.io/facetype.js/).
+- **Fuente** (`fontUrl`): **typeface JSON** de three (formato de `FontLoader`), **`.otf`** o
+  **`.ttf`**. El formato se **autodetecta por la extensión** de la ruta (sin distinguir mayúsculas;
+  `?query` y `#hash` no cuentan): `.otf`/`.ttf` es fuente binaria y cualquier otra cosa se trata como
+  typeface JSON, que soba descarga tal cual, igual que siempre. No hay campo nuevo en el tema.
+  - La fuente binaria se convierte en el navegador con el `TTFLoader` de three (su `opentype`
+    embebido lee contornos TrueType y CFF). Entra por **`import()` dinámico**, así que tu bundler lo
+    deja en un chunk aparte que solo se descarga cuando el tema usa una `.otf`/`.ttf`: con typeface
+    JSON ese coste no se paga. Cero dependencias nuevas: viene con `three`, que ya es peer.
+  - El sentido de giro de los contornos (CFF frente a TrueType) lo decide la **cabecera** del fichero,
+    no la extensión, así que un `.otf` con contornos TrueType también sale bien.
+  - **WOFF/WOFF2 no se admiten**: conviértelas a `.otf`/`.ttf` (o a typeface JSON con
+    [facetype.js](https://gero3.github.io/facetype.js/)). Una `.otf`/`.ttf` que no carga o cuya
+    cabecera no es OTF/TTF degrada a **frente sin textos**, con un aviso dev `[ngx-products-3d]`.
+  - Un **typeface JSON** que no carga lo descarga y lo gestiona `NgtsText3D` de soba, no la lib: el
+    error de su recurso sale en consola como error de Angular (no como aviso `[ngx-products-3d]`),
+    los textos no llegan a construirse y el arranque espera al tope `BADGE_LOADING.timeoutMs`
+    (§ [Arranque](#arranque-carga-y-caída)).
 - **Modelo** (`cardModelUrl`): GLB que cumpla el contrato de § Contrato del modelo GLB.
 
 ## Contrato del asset frontal
@@ -309,7 +341,7 @@ tarjeta a mano**.
 | **Formato** | **No es un requisito**: cualquiera que cargue `TextureLoader` de three y soporte alfa (WebP y PNG son los habituales). Lo que importa es **alfa + ratio**, no la extensión |
 | **Espacio de color** | **sRGB**. La lib marca la textura como `SRGBColorSpace` al resolverla; exporta el asset en sRGB, no en Display P3 ni en lineal |
 | **Orientación** | **El borde superior de la imagen es el borde superior de la tarjeta**: tal como se ve en tu visor de imágenes, así se ve en la card. La lib ya concilia las dos convenciones de V que se cruzan aquí (UV de glTF vs. textura de un render target) |
-| **Márgenes** | Ninguno añadido por la lib: la imagen se mapea borde a borde sobre la cara. Deja tú el aire que necesites, y hueco abajo-derecha para el nombre, el número y el tier |
+| **Márgenes** | Ninguno añadido por la lib: la imagen se mapea borde a borde sobre la cara. Deja tú el aire que necesites, y hueco abajo-izquierda para el nombre, el número y el tier (§ [Textos del socio](#textos-del-socio-badge_text_layout)) |
 
 **Ratio equivocado: la lib avisa, no rompe.** Si el ratio del asset se desvía más de un **1%** del
 32:45, la lib emite **un** `console.warn` con prefijo `[ngx-products-3d]`, la URL, el ratio esperado
@@ -327,8 +359,8 @@ Otros dos comportamientos degradados, por si los ves:
 ## Textos del socio: `BADGE_TEXT_LAYOUT`
 
 Dónde caen `name`, `memberNumber` y `tier` sobre el frente lo decide `BADGE_TEXT_LAYOUT`, un array
-de `BadgeTextSlot` exportado por la lib. Por defecto van **abajo-derecha**, alineados a la derecha,
-con el tier justo encima:
+de `BadgeTextSlot` exportado por la lib. Por defecto van **abajo-izquierda**, alineados a la
+izquierda (a bandera por la izquierda: los tres comparten la U `0.08`), con el tier justo encima:
 
 ```ts
 export interface BadgeTextSlot {
@@ -347,16 +379,16 @@ export interface BadgeTextSlot {
 
 // Valores por defecto de la lib
 export const BADGE_TEXT_LAYOUT: BadgeTextSlot[] = [
-	{ field: 'name', anchor: [0.92, 0.16], align: 'right', size: 0.09, height: 0.01, maxWidth: 0.65 },
+	{ field: 'name', anchor: [0.08, 0.16], align: 'left', size: 0.09, height: 0.01, maxWidth: 0.65 },
 	{
 		field: 'memberNumber',
-		anchor: [0.92, 0.08],
-		align: 'right',
+		anchor: [0.08, 0.08],
+		align: 'left',
 		size: 0.06,
 		height: 0.01,
 		maxWidth: 0.4,
 	},
-	{ field: 'tier', anchor: [0.92, 0.24], align: 'right', size: 0.05, height: 0.01, maxWidth: 0.4 },
+	{ field: 'tier', anchor: [0.08, 0.24], align: 'left', size: 0.05, height: 0.01, maxWidth: 0.4 },
 ];
 ```
 
@@ -518,7 +550,8 @@ export class CustomBadgeCanvasComponent {
 		// baseTextures puede ir {}: todos los tiers caerían en defaultBaseTextureUrl
 		baseTextures: { gold: '/assets/3d/front-gold.webp' },
 		defaultBaseTextureUrl: '/assets/3d/front-default.webp',
-		fontUrl: '/assets/3d/font.json',
+		fontUrl: '/assets/3d/font.otf',
+		// Opcional: override del default BADGE_BASE_COLOR ('#111111')
 		baseColor: '#3b0764',
 	};
 }

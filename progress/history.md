@@ -296,3 +296,25 @@
   distingue el `maxWidth` por slot del global), **P23** (`#` suelto con `memberNumber` vacío, defecto
   de la lib), **P24** (mensaje de consola con redacción anterior a T4), **H3** (`alignOffsetX` sin
   `default`), más la higiene preexistente de CRLF/Prettier y `setupFiles` en `angular.json`.
+
+## 2026-09-28 — spec-04-T7 `badge-typography-docs` (feature id 7) — done
+
+- README publicado:
+  - fuentes JSON/OTF/TTF, con `import()` dinámico, giro por cabecera y WOFF no admitido;
+  - textos abajo-izquierda, con la trampa de la V intacta;
+  - contrato de la correa: horizontal, tileable, alfa, `bandRepeatFor` y `repeat` < 1 a partir de
+    ≈ 13.5:1;
+  - default `#111111`;
+  - caso del typeface JSON roto (se resuelve por el tope).
+- README raíz: fuente `.otf`, arte del frente `.webp`, fila `baseColor` y output `ready`.
+- CHANGELOG 0.3.0 ampliado en sitio:
+  - breaking 6 (`BADGE_BAND.repeat` → `bandRepeatFor`);
+  - § Valores por defecto (`BADGE_TEXT_LAYOUT`, `BADGE_BASE_COLOR`, `BADGE_LAYOUT`);
+  - hotfix 8–11 en Añadido y Corregido;
+  - cabecera «sin publicar».
+- P25 cerrado: el `cp` del smoke test solo nombra assets que existen.
+- En la lib solo cambian comentarios y JSDoc («negro» → `#111111`, más 3 JSDoc rancios en post-review).
+- APPROVED. build/lint/test 319/319/playground verdes.
+- Hallazgo: tag y GitHub Release `v0.3.0` creados sobre `2a2a52f`, pero el `npm publish` falló
+  (registry en 0.2.1) y un merge sin bump no lo re-dispara. Decisión del leader.
+- **Última fase de spec-04.**

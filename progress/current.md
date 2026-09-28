@@ -17,6 +17,34 @@ Baseline heredado: `pnpm build` ✅ · `pnpm ng lint ngx-products-3d` ✅ ·
 `pnpm ng test ngx-products-3d` **160/160** ✅ · `pnpm ng build products-3d-playground` ✅.
 **El implementer debe revalidarlo antes de tocar nada** (§1 de `AGENTS.md`).
 
+## ✅ Cerrada (2026-09-28): spec-04-T7 — `badge-typography-docs` (feature `id: 7`)
+
+- **Estado**: **`done`**. Review APPROVED (`progress/review_spec-04-T7.md`); observaciones no
+  bloqueantes 1–3 aplicadas (solo docs/JSDoc, ver § Post-review del informe). build ✅ · lint ✅ ·
+  test **319/319** ✅ · playground ✅. `feature_list.json` id 7 = `done`. Sin commitear.
+  **Última fase de spec-04**: el archivo de la spec lo hace el leader.
+
+- **En curso**: spec-04-T7 — README publicado, README raíz y CHANGELOG 0.3.0 (encargo:
+  `progress/task_spec-04-T7.md`). Rama `feature/spec-04-t7-docs`. Última tarea de spec-04.
+- **Baseline revalidado** (implementer): build ✅ · lint ✅ · test **319/319** ✅.
+- **Estado (implementer)**: implementado, **pendiente de review**. build ✅ · lint ✅ · test
+  **319/319** ✅ · playground ✅ · `dist` README = fuente, `.d.ts` con `'#111111'`. Lib: solo 4
+  líneas de comentario/JSDoc. Sin commitear. Informe: `progress/impl_spec-04-T7.md`. ⚠️ Hallazgo
+  para el leader: tag + GitHub Release `v0.3.0` creados el 2026-09-28 sobre `2a2a52f`, pero el
+  `npm publish` falló (registry en 0.2.1) y un merge sin bump de versión no lo re-dispara.
+- **Plan**:
+  1. README publicado: (a) fuentes JSON/OTF/TTF con `import()` dinámico, (b) textos abajo-izquierda
+     (trampa de la V intacta), (c) contrato de la correa (tileable, alfa, repeat derivado), (d)
+     default `#111111`; coherencia con la sección del hotfix 11.
+  2. README raíz: band.png y fila de fontUrl.
+  3. CHANGELOG 0.3.0 ampliado (breaking `BADGE_BAND.repeat`, fontUrl, defaults, hotfix 8–11) y
+     `:112` corregido en sitio; sin 0.4.0.
+  4. Solo comentarios/JSDoc en la lib («negro» → `#111111`); P25 del runbook del smoke test.
+  5. Barridos de `#000000`/«negro», build/lint/test/playground y comprobación de `dist/`.
+- **Criterios de aceptación aplicables**: los 10 de `feature_list.json` id 7 + las ampliaciones
+  del leader en `progress/task_spec-04-T7.md` (hotfix 8–11 en el CHANGELOG, P25, JSDoc de
+  `types.ts`, solo comentarios en la lib, playground build verde, `.d.ts` y README de `dist/`).
+
 ## ✅ Cerrada (2026-09-28): spec-04-T6 — `badge-playground-font-color` (feature `id: 6`)
 
 - **En curso**: spec-04-T6 — Playground: color de texto, temas sin baseColor y N3 (encargo:
