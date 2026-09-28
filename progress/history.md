@@ -318,3 +318,14 @@
 - Hallazgo: tag y GitHub Release `v0.3.0` creados sobre `2a2a52f`, pero el `npm publish` falló
   (registry en 0.2.1) y un merge sin bump no lo re-dispara. Decisión del leader.
 - **Última fase de spec-04.**
+
+## 2026-09-28 — spec-04 cerrada y archivada
+
+- `git mv docs/specs/active/spec-04-typography-band-assets.md docs/specs/` (leader).
+- T1–T7 `done` con review APPROVED (`progress/review_spec-04-T1..T7.md`); T5 cerrada por bookkeeping
+  (ronda 2 APPROVED del 2026-08-06). Hotfix 8–11 (`badge-band-clip-sync`, `badge-band-endcap`,
+  `badge-font-cff-winding`, `badge-loading-drop`) `done` y recogidos en el CHANGELOG 0.3.0.
+- N3 firmada por Sergio (hotfix 11 y T6), sin log de consola guardado en T6 (excepción firmada).
+- Nivel 2 antes de archivar: build ✅ · lint ✅ · test 319/319 ✅ · playground ✅.
+- Abierto: publicación de la 0.3.0 (ver `progress/review_spec-04-T7.md` §5); typeface JSON roto lanza
+  dentro de soba (documentado en «Conocido, no corregido»).

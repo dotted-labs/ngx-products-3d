@@ -1,21 +1,24 @@
 # Sesión actual
 
-- **Fecha**: 2026-08-06
-- **Spec**: `docs/specs/active/spec-04-typography-band-assets.md` (**activa, T1–T4 cerradas**)
+- **Fecha**: 2026-09-28
+- **Spec**: ninguna activa (`docs/specs/active/` solo con su README). `spec-04` **archivada** en
+  `docs/specs/spec-04-typography-band-assets.md`.
 - **Rol**: leader
 
 ## Estado
 
-`spec-03-F4v2` cerrada y archivada en `docs/specs/spec-03-F4v2-front-design.md` (8/8 features
-`done`, 8 veredictos APPROVED, N3 firmada por Sergio el 2026-08-05). Bitácora en
-`progress/history.md`.
+**`spec-04` cerrada y archivada (2026-09-28).** T1–T7 `done`, 7 veredictos APPROVED, N3 de T6
+firmada por Sergio (excepción firmada: sin log de consola guardado, norma 6). Hotfix 8–11 también
+`done`. Nivel 2 del leader antes de archivar: build ✅ · lint ✅ · test **319/319** ✅ · playground ✅.
 
-**`spec-04` redactada y activada**, con las 7 tareas desglosadas en `feature_list.json`. **T1, T2, T3
-y T4 cerradas (`done`, APPROVED)**; T5–T7 en `pending`.
+**Publicación de la 0.3.0 — decisión pendiente de Sergio** (análisis en
+`progress/review_spec-04-T7.md` §5): `main` ya lleva la 0.3.0 (PR #9) y el run de release falló en
+`npm publish` (E404, probable token). Tag y GitHub Release `v0.3.0` existen sobre `2a2a52f`
+(incompleto). Un merge sin bump **no** vuelve a publicar; **no** relanzar el job fallido (publicaría
+`2a2a52f`). Ramas: `fix/loading-state` (PR #10) → `feature/spec-04-t6-playground` →
+`feature/spec-04-t7-docs` (apiladas).
 
-Baseline heredado: `pnpm build` ✅ · `pnpm ng lint ngx-products-3d` ✅ ·
-`pnpm ng test ngx-products-3d` **160/160** ✅ · `pnpm ng build products-3d-playground` ✅.
-**El implementer debe revalidarlo antes de tocar nada** (§1 de `AGENTS.md`).
+Lo de abajo es el registro de las tareas de esta sesión (ya volcado a `progress/history.md`).
 
 ## ✅ Cerrada (2026-09-28): spec-04-T7 — `badge-typography-docs` (feature `id: 7`)
 
