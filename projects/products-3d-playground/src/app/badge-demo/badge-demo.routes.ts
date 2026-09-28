@@ -23,7 +23,7 @@ export const badgeDemoRoutes: Routes = [
 					silver: '/assets/base-wrong-ratio.png',
 				},
 				defaultBaseTextureUrl: '/assets/badge_vitality.png',
-				fontUrl: '/assets/font.json',
+				fontUrl: '/assets/Ballega.otf',
 				baseColor: '#3b0764',
 			}),
 		],

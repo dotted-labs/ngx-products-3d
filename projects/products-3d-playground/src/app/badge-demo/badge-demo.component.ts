@@ -30,7 +30,7 @@ const DEMO_THEMES: Record<DemoThemeKey, DemoTheme> = {
 			silver: WRONG_RATIO_ART_URL,
 		},
 		defaultBaseTextureUrl: FRONT_ART_URL,
-		fontUrl: '/assets/font.json',
+		fontUrl: '/assets/Ballega.otf',
 		// Sin baseColor explícito el clip/clamp de este tema saldría negro (no define
 		// colors.clip): con él, el metal se tiñe de violeta y el frente enseña ese mismo
 		// color por las zonas transparentes del arte.
@@ -45,7 +45,7 @@ const DEMO_THEMES: Record<DemoThemeKey, DemoTheme> = {
 		// inválido (cero warns en consola mientras esté seleccionado).
 		baseTextures: {},
 		defaultBaseTextureUrl: FRONT_ART_URL,
-		fontUrl: '/assets/font.json',
+		fontUrl: '/assets/Ballega.otf',
 		// baseColor distinto al de violet: alternar temas debe notarse en el frente (color
 		// que asoma por el alpha del arte) aunque el arte sea el mismo fichero.
 		baseColor: '#7c2d12',

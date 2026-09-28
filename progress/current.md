@@ -411,3 +411,11 @@ lint fallaba; se regeneró con `pnpm install --frozen-lockfile`.
 del clamp (feature 8)», «Fixed: extremos de la correa sin cuña ni parpadeo, parche del shader de meshline
 (feature 9)», «Added: `BADGE_CARD_MODEL.bandAttachPoint`, `BADGE_BAND.endCapTolerance`,
 `BADGE_LOOP_PRIORITY`», y el aviso de `updatePriority` para consumidores con canvas propio.
+
+### T6(a) adelantado por el leader (2026-09-28)
+
+Sergio reportó que el nombre y el número de socio ya no se veían. Causa: `font.json` se borró en el
+commit `advances` (T5), pero la demo seguía con `fontUrl: '/assets/font.json'` → 404 → la lib oculta
+los textos (gate + warn dev). No tiene relación con las features 8/9. Repuntadas las 5 referencias
+(`badge-demo.component.ts:33,48`, `badge-demo.routes.ts:26`, `docs/smoke-test-external.md:61,101`) a
+`Ballega.otf`. `pnpm ng build products-3d-playground` ✅. El resto de T6 sigue `pending`.

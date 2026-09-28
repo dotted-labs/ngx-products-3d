@@ -58,7 +58,7 @@ auto-instala.
 
 ```bash
 mkdir -p public/assets
-cp <repo>/projects/products-3d-playground/public/assets/{membresia.glb,band.png,base-gold.png,base-silver.png,base-default.png,font.json} public/assets/
+cp <repo>/projects/products-3d-playground/public/assets/{membresia.glb,band.png,base-gold.png,base-silver.png,base-default.png,Ballega.otf} public/assets/
 ```
 
 ## 5. Cablear la app (3 archivos)
@@ -98,7 +98,7 @@ export const badgeRoutes: Routes = [
 					silver: '/assets/base-silver.png',
 				},
 				defaultBaseTextureUrl: '/assets/base-default.png',
-				fontUrl: '/assets/font.json',
+				fontUrl: '/assets/Ballega.otf',
 			}),
 		],
 		component: BadgePage,
