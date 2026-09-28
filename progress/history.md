@@ -215,3 +215,84 @@
 - Feature 10 → `done`. **Fase 5 de spec-03 completa** (features 8, 9, 10).
 - **OJO working tree**: cambios de la feature 9 (playground + assets ember) y README de la 10 SIN commitear (el usuario no ha pedido commit); lib de 6/7/8 ya commiteada.
 - **Siguiente**: feature 11 `publish-package` (Fase 6, depende de 9 ✅ y 10 ✅) — outward-facing: el implementer prepara (sideEffects, peers, dry-run, smoke test) pero la publicación real requiere GO explícito del usuario. Decidir también idioma del README antes de publicar.
+
+## 2026-07-21 — spec-03 Fase 6 — feature 11 `publish-package` → done (0.2.1 publicada por CI). spec-03 COMPLETADA
+
+- **Rol**: leader (orquestación); 1 implementer → 1 reviewer (**APROBADO**, `progress/review_feature11.md`).
+- **Implementer** (`progress/impl_feature11.md`): package.json de la lib ajustado (rangos three/rapier3d-compat/meshline acotados a los peers reales de angular-three@4.2.3; `repository.url` normalizada; `sideEffects: false`), README (tabla de peers) sincronizado, `npm publish --dry-run` limpio (5 archivos, 52.4 kB), smoke test externo ejecutado hasta build verde con el tarball de `npm pack` (`docs/smoke-test-external.md`).
+- **Publicación**: el `npm publish` local falló (token caducado + el paquete lo posee `luismdev`, no `gunsr`). Acabó publicándose por **CI**: al mergear a `main`, `.github/workflows/release-publish.yml` detecta el bump y publica con el `NPM_TOKEN` del repo. La **0.2.0** salió con el README equivocado (un `cp README.md` de la raíz pisaba el README público de 14 kB que deja ng-packagr); fix del workflow + bump a **0.2.1** (PR #6) → CI publicó 0.2.1 con el README correcto. Registry: `[0.1.0, 0.1.1, 0.2.0, 0.2.1]`, `latest: 0.2.1`.
+- Feature 11 → `done` por instrucción explícita del usuario. Residual no bloqueante: checklist visual en navegador §6b [manual], cubierto por equivalencia con el N3 de F9/F10. **spec-03 completada.**
+
+## 2026-07-31 / 2026-08-01 — spec-03-F3 (assets GLB reales + materiales) → COMPLETADA y archivada
+
+- **Rol**: leader (orquestación); 3 features, cada una con implementer → reviewer (las 3 **APROBADAS**).
+- **Contexto**: spec-03 se cerró y publicó (0.2.1) con assets demo. spec-03-F3 sustituye esos placeholders por los assets reales de spec-05: `membresia.glb` (modelo Blender con tarjeta + aro + hebilla) y `band.jpg` (espiga tileable 1024×256).
+- **Entrevista de arranque** (3 decisiones del usuario): assets al playground, NO empaquetados en la lib (architecture.md §5); `band.jpg` sustituye a las dos correas demo (la diferencia entre temas la marca `colors.band`); las UVs las re-exportó el usuario.
+- **Bloqueador detectado y resuelto antes de empezar**: el primer `membresia.glb` no traía `TEXCOORD_0` en `cardMesh` → el frente dinámico del socio (RenderTexture) no se habría pintado. El usuario re-exportó el GLB con UVs.
+- **Feature 12 `badge-real-assets-wiring`** (`impl_feature12.md` / `review_feature12.md`): `git mv` de los assets al playground, `src/public/` de la lib eliminado, URLs cableadas en los dos sitios que deben ir sincronizados (provider de ruta + `DEMO_THEMES`), y `card.glb`/`band.png`/`band-ember.png` borrados tras grep sin referencias vivas (ambos README y `docs/smoke-test-external.md` actualizados). Perímetro respetado: cero cambios en `src/lib/`.
+- **Feature 13 `badge-glb-anchor-offset`** (`impl_feature13.md` / `review_feature13.md`): el código asumía origen del GLB = anclaje del clip (el `card.glb` demo traía el nodo `card` con translation `y = -1.45`); `membresia.glb` tiene ese nodo en identidad y su origen es el **centro de la tarjeta**. Se separan los dos conceptos que compartían constante: `BADGE_CARD_MODEL.groupPosition` `[0,0,0]` (visual) vs `BADGE_PHYSICS.cardJointAnchor` `[0,1.286,0]` (físico, top del `clip`). Verificado por el reviewer: el collider coincide EXACTAMENTE con el bbox de `cardMesh`. Física/joints/drag/estabilización intactos.
+- **Feature 14 `badge-assets-visual-pass`** (`impl_feature14.md` / `review_feature14.md`): partida en "resoluble sin ojos" (el implementer) y "checklist N3" (el usuario). Tres hallazgos analíticos, los tres **verificados de forma independiente por el reviewer al último decimal**:
+  1. **V invertida**: las UVs nuevas cubren `[0,1]²` exacto (`u=0.625x+0.5`, `v=-0.4444y+0.5`, r²=1) pero con la V opuesta a la textura del RenderTexture → el frente habría salido **espejado**. Corregido con `BADGE_TEXTURE.mapRepeat [1,-1]` + `mapOffset [0,1]`. **Confirmado en pantalla por la N3**.
+  2. **Teselado de la correa mal por un 18 %**: el ancho real no es `lineWidth`=1 sino `lineWidth·tan(fov/2)`=0.2217 (meshline con `sizeAttenuation`) → `BADGE_BAND.repeat` de `[-4,1]` a `[-3.383,1]`.
+  3. **El bbox de la spec era falso en los dos ejes**: real `Y[-1.125, 1.5642]`, `Z[±0.09]` (el top del conjunto es la **hebilla**, no el clip). **Causa raíz** (reproducida exactamente por el reviewer): se midió aplicando solo la `translation` del `clamp`, ignorando su `rotation` y `scale`. La spec activa se corrigió con esa causa raíz anotada.
+- **N3 del usuario (2026-08-01): CORRECTA**. El punto 0 se resolvió **sin mover el anchor**: la relación correa↔aro↔hebilla se da por buena, así que `cardJointAnchor` se queda en `[0, 1.286, 0]` y la propuesta de subirlo a `1.5642` queda **descartada**, no pendiente. Cierra también CA1 y la mitad de CA3 que la feature 13 dejó abiertas.
+- **Publicación 0.3.0**: bump + `CHANGELOG.md` creado (no existía) + aviso de migración en el README publicado. **Dos breaking changes**, de ahí el minor y no un patch (`^0.2.1` habría instalado un patch y roto builds ajenos): (a) cambia el contrato del GLB (origen clip → centro), y es **silencioso** — un modelo de 0.2.x carga sin error y renderiza desplazado 1.45 uds; (b) `BADGE_CARD_PLACEHOLDER` deja de exportarse (huérfano desde 0.2.0, nunca documentado, pero viajaba en el tarball).
+- **Verificación final**: build ✅ · lint ✅ · **80/80** ✅ · playground ✅ · `dist/ngx-products-3d` con 0.3.0 y el README de migración, sin binarios.
+- **Deuda registrada para spec futura**: el frente de la tarjeta se deforma con el aspecto de la **ventana** (el portal hereda el `size` del canvas mientras el FBO es cuadrado) y con ventana ancha el plano base deja franjas oscuras — preexistente desde 0.2.1, excluido por el «No hacer» de esta spec. Recomendación del reviewer al abordarlo: derivar el aspecto del bbox del GLB en vez de clavar 1.6/2.25, ~2 % de overscan en `planeSize` y evaluar un FBO no cuadrado. Además: derivar `BADGE_BAND.repeat` del fov con **función pura evaluada al cargar el módulo (no `computed()`)** y el aspecto de textura como parámetro. Más los "pequeños cambios" visuales que el usuario dejó anotados en la N3.
+
+## 2026-08-01 / 2026-08-05 — spec-03-F4v2 (diseño frontal de la card) → COMPLETADA y archivada
+
+- **Rol**: leader (orquestación); 8 features, cada una con implementer → reviewer (las 8 **APROBADAS**:
+  6/6, 6/6, 8/8, 7/7, 6/6, 8/8, 9/9, 7/7). Tests **80 → 160**. Commits: `557cb0f`, `ae35fa2`,
+  `69c7f61`, `cea05d6`, `c2c7286`, `1157122` en `feature/blender-assets`.
+- **Objetivo**: cerrar la deuda que dejó anotada spec-03-F3 — el frente de la tarjeta **se deformaba
+  con el aspecto de la ventana** — y darle diseño real (arte con alpha sobre un color base).
+- **La spec se revisó ANTES de implementar** y traía cuatro afirmaciones falsas sobre el código y
+  tres huecos (`progress/review_spec-03-F4v2.md`); se corrigió antes de repartir trabajo.
+- **Diagnóstico real (T3)**: había **tres** relaciones de aspecto encadenadas, no dos. El dominante
+  era el `aspect` de la cámara de la escena RT. El implementer verificó las citas en `node_modules` y
+  descubrió que `updateCamera()` del core **no llega a ejecutarse** sobre la cámara del portal (sus
+  tres rutas están muertas para este caso); lo que deformaba era el effect de la cámara **de soba**.
+  El reviewer lo confirmó línea a línea y dictaminó que `manual: true` no es cargo-cult: blinda una
+  ruta latente que se activaría con un cambio de una línea aguas arriba.
+- **Solución**: FBO 1600×2250 + cámara ortográfica `manual` con frustum explícito, todo derivado de
+  `BADGE_FRONT_FACE` (a su vez derivado de `cardColliderHalfExtents`: prohibido duplicar el 1.6/2.25);
+  escena RT en tres capas (quad opaco de `baseColor` → arte del tier con alpha → textos); textos
+  anclados abajo-derecha con escala **uniforme** y offset de alineado sobre el ancho ya escalado.
+- **N3 (T7) con Chrome real + GPU**: el defecto está **CERRADO**. 1280×900 vs 640×900 alineado por
+  bbox → **0 píxeles distintos dentro de la tarjeta** (los 219 que difieren caen fuera). El reviewer
+  lo remidió con un decodificador PNG **propio** y corrigió dos afirmaciones del informe: la
+  desviación en 1800×700 es 0.36 %/0.49 % (no «<0.15 %»), y los 10 frames idénticos prueban
+  estabilidad temporal, **no** ausencia de z-fighting (lo sostiene el zoom ×6).
+- **N3 del usuario (2026-08-05): CORRECTA.** Firma los nueve puntos que ningún agente podía cerrar
+  (destello al montar, z-fighting en movimiento, FPS a dpr 2, doble tone mapping, URL rota, canto y
+  dorso). Con eso la spec queda cerrable.
+- **Assets**: el alcance se redujo de seis `.webp` a **UNA** imagen tras comprobar que la lib solo
+  exige `defaultBaseTextureUrl`. Los seis PNG demo resultaron ser **256×256 SIN alfa** (verificado
+  leyendo cabeceras): inservibles — la demo nunca pudo mostrar el `baseColor`. Cinco borrados, el
+  sexto conservado como `base-wrong-ratio.png` (fixture del warn de ratio). Sergio aportó
+  `badge_vitality.png` (800×1125 = 32:45 exacto, RGBA, 34 % de píxeles transparentes).
+- **DOS INCIDENTES DE PROCESO, con normas nuevas:**
+  1. La sesión del 2026-08-02 murió dejando una **mutación de discriminancia sin revertir**
+     (`if (false as boolean)` en lugar de `if (ngDevMode)`): warn dev muerto y árbol rojo 119/120.
+     → Norma: **ninguna mutación temporal sobrevive al informe**; `false as boolean` no es una
+     construcción aceptable (Sergio, explícito).
+  2. Un implementer usó `git checkout --` para revertir una mutación y, como la rama **no tenía nada
+     commiteado**, borró el trabajo cerrado de T1 y T3. Reconstruido y verificado a tres bandas
+     (`md5sum`, diff previo del leader, `git diff` del reviewer). → Normas: **prohibido
+     `git checkout --`/`restore`/`stash` sobre trabajo sin commitear** (copia previa + `md5sum -c`),
+     y **commitear cada feature cerrada** en vez de acumular en el working tree.
+  3. Un implementer justificó una decisión con «un aviso del leader» que **nunca se envió**.
+     → Norma: no atribuir instrucciones a intercambios no verificables.
+- **Los reviewers añadieron valor real**, no fueron trámite: los de T4, T5 y T6 encontraron cada uno
+  mutaciones que los informes NO demostraban, y el de T6 detectó un **mutante superviviente** (P22).
+  El de T8 reconstruyó el delta de superficie pública 0.2.1 → HEAD contra el `.d.ts` del dist.
+- **0.3.0 sigue SIN publicar**: los breaking de esta spec se **plegaron** en su entrada del CHANGELOG
+  (`BadgeTextSlot` cambia de forma, `BADGE_TEXTURE.size` → `width`/`height`, `planeSize` fuera,
+  `BADGE_TEXT.maxWidth` fuera) y el defecto de deformación pasó de «conocido» a **corregido**.
+  Publicar = mergear a `main` (lo dispara CI). **Pendiente de GO explícito de Sergio.**
+- **Backlog heredado**: **P21** (la extrusión del texto depende de que soba siga importando el
+  `TextGeometry` de three-stdlib; si migra, se va a 50 uds en silencio), **P22** (ningún test
+  distingue el `maxWidth` por slot del global), **P23** (`#` suelto con `memberNumber` vacío, defecto
+  de la lib), **P24** (mensaje de consola con redacción anterior a T4), **H3** (`alignOffsetX` sin
+  `default`), más la higiene preexistente de CRLF/Prettier y `setupFiles` en `angular.json`.

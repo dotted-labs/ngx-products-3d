@@ -52,14 +52,14 @@ vi.hoisted(() => {
 
 import { signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
-import { NGT_STORE, type NgtSize } from 'angular-three';
+import { NGT_CATALOGUE, NGT_STORE, type NgtSize } from 'angular-three';
 import {
 	NgtrPhysics,
 	type NgtrRigidBodyOptions,
 	type NgtrRopeJointParams,
 	type NgtrSphericalJointParams,
 } from 'angular-three-rapier';
-import { Vector2 } from 'three';
+import { CatmullRomCurve3, Euler, Mesh, MeshStandardMaterial, Object3D, PerspectiveCamera, Vector2, Vector3 } from 'three';
 import { PRODUCTS_3D_CONFIG } from '../tokens';
 import type {
 	BadgeMemberData,
@@ -67,10 +67,16 @@ import type {
 	Products3dBadgeTheme,
 	Products3dConfig,
 } from '../types';
+import { BadgeBandMaterial } from './badge-band-material';
 import { Products3dBadgeScene } from './badge-scene.component';
 import {
+	bandRepeatFor,
 	BADGE_BAND,
+	BADGE_BASE_COLOR,
+	BADGE_CAMERA,
+	BADGE_CARD_MODEL,
 	BADGE_LAYOUT,
+	BADGE_LOOP_PRIORITY,
 	BADGE_MAP_ANISOTROPY,
 	BADGE_MATERIAL_DEFAULTS,
 	BADGE_PHYSICS,
@@ -81,11 +87,17 @@ import {
 // URL que el componente deriva del config (vía la fn de entrada) para verificar que NO está
 // hardcodeada. `value()` = undefined simula "recurso sin resolver" (el @if del template lo
 // gatea). `vi.hoisted` expone el registro dentro de la factory izada de `vi.mock`.
-const gltfMock = vi.hoisted(() => ({ urls: [] as string[] }));
+// `data` permite a los tests del tinte del metal simular el GLB YA resuelto (nodos clip/clamp +
+// material 'metal' reales de three, que no necesitan WebGL para clonarse ni teñirse). Por defecto
+// `undefined` = recurso sin resolver; se resetea en el beforeEach para no filtrarse entre tests.
+const gltfMock = vi.hoisted(() => ({ urls: [] as string[], data: undefined as unknown }));
 // La correa lee su textura vía textureResource. Se CAPTURA la fn de entrada (no se invoca en
 // construcción: `theme` es un input y aún no tiene valor → NG0950 si se lee eager, a diferencia
 // del gltf que deriva la URL de un inject disponible ya). Los tests la invocan tras setInput.
-const textureMock = vi.hoisted(() => ({ inputs: [] as (() => string)[] }));
+// `data` permite simular la textura YA resuelta (los tests del teselado solo necesitan `image`
+// con dimensiones: el aspecto sale de ahí). Por defecto `undefined` = recurso sin resolver; se
+// resetea en el beforeEach para no filtrarse entre tests.
+const textureMock = vi.hoisted(() => ({ inputs: [] as (() => string)[], data: undefined as unknown }));
 // El componente lee los recursos vía el API NO-lanzante (hasValue()/status() + value()) para no
 // romper el render si una URL falla. El mock expone las tres: hasValue()=false + status()='loading'
 // simulan "recurso sin resolver" (value()=undefined) → gltfData()/bandMap() dan undefined (sin
@@ -93,11 +105,20 @@ const textureMock = vi.hoisted(() => ({ inputs: [] as (() => string)[] }));
 vi.mock('angular-three-soba/loaders', () => ({
 	gltfResource: (input: () => string) => {
 		gltfMock.urls.push(input());
-		return { value: () => undefined, scene: () => null, hasValue: () => false, status: () => 'loading' };
+		return {
+			value: () => gltfMock.data,
+			scene: () => null,
+			hasValue: () => gltfMock.data !== undefined,
+			status: () => (gltfMock.data === undefined ? 'loading' : 'resolved'),
+		};
 	},
 	textureResource: (input: () => string) => {
 		textureMock.inputs.push(input);
-		return { value: () => undefined, hasValue: () => false, status: () => 'loading' };
+		return {
+			value: () => textureMock.data,
+			hasValue: () => textureMock.data !== undefined,
+			status: () => (textureMock.data === undefined ? 'loading' : 'resolved'),
+		};
 	},
 }));
 
@@ -106,13 +127,21 @@ interface SceneInternals {
 	dragged: () => boolean;
 	layout: typeof BADGE_LAYOUT;
 	band: typeof BADGE_BAND;
-	cardAnchor: typeof BADGE_PHYSICS.cardJointAnchor;
+	cardModelPosition: typeof BADGE_CARD_MODEL.groupPosition;
 	gltf: { value: () => unknown };
 	bandTexture: { value: () => unknown };
 	gltfData: () => unknown;
 	bandMap: () => unknown;
+	bandRepeat: () => [number, number];
 	materialOpts: () => BadgePhysicalMaterialOptions;
-	renderTextureOptions: { width: number; height: number; frames: number; anisotropy: number };
+	renderTextureOptions: {
+		width: number;
+		height: number;
+		frames: number;
+		anisotropy: number;
+		repeat: [number, number];
+		offset: [number, number];
+	};
 	bandColor: () => string;
 	resolution: () => Vector2;
 	bodyOptions: Partial<NgtrRigidBodyOptions>;
@@ -136,7 +165,7 @@ const THEME: Products3dBadgeTheme = {
 };
 
 const CONFIG: Products3dConfig = {
-	cardModelUrl: '/assets/card.glb',
+	cardModelUrl: '/assets/membresia.glb',
 };
 
 // Mock mínimo de NgtrPhysics para los hooks de joints (ropeJoint/sphericalJoint):
@@ -150,11 +179,29 @@ const PHYSICS_MOCK = {
 
 // Mock del store de angular-three (NGT_STORE): expone `size` como signal (alimenta la
 // `resolution` reactiva de la MeshLineMaterial) y `snapshot.internal.subscribe` (usado por
-// `beforeRender`, que aquí devuelve un unsubscribe no-op y nunca invoca el callback de frame).
+// `beforeRender`). El subscribe REGISTRA cada callback con su prioridad y nunca lo invoca por su
+// cuenta: solo los tests del loop (runFrame) ejecutan frames, en el orden de prioridad del loop real.
+interface FrameState {
+	delta: number;
+	camera: PerspectiveCamera;
+	pointer: Vector2;
+}
+interface FrameSubscription {
+	callback: (state: FrameState) => void;
+	priority: number;
+}
+const frameSubscriptions: FrameSubscription[] = [];
 const sizeSignal = signal<NgtSize>({ width: 800, height: 600, top: 0, left: 0 });
 const STORE_MOCK = {
 	size: sizeSignal,
-	snapshot: { internal: { subscribe: () => () => undefined } },
+	snapshot: {
+		internal: {
+			subscribe: (callback: FrameSubscription['callback'], priority = 0) => {
+				frameSubscriptions.push({ callback, priority });
+				return () => undefined;
+			},
+		},
+	},
 };
 
 function createScene(): ComponentFixture<Products3dBadgeScene> {
@@ -179,7 +226,51 @@ function internalsOf(fixture: ComponentFixture<Products3dBadgeScene>): SceneInte
 	return fixture.componentInstance as unknown as SceneInternals;
 }
 
+/** Forma del GLB de la tarjeta que consume la escena (nodos card/clip/clamp + materiales). */
+interface TestGltf {
+	nodes: { card: Mesh; clip: Mesh; clamp: Mesh };
+	materials: { base: MeshStandardMaterial; metal: MeshStandardMaterial };
+}
+
+/**
+ * GLB ya resuelto para los tests del tinte: clip y clamp COMPARTEN la misma instancia de `metal`,
+ * igual que el GLB real. Es justo la instancia que el effect no debe mutar (la cachea el loader
+ * entre recargas). Materiales y meshes de three no necesitan WebGL para clonarse ni teñirse.
+ */
+function makeGltfData(): TestGltf {
+	const metal = new MeshStandardMaterial();
+	const nodes = { card: new Mesh(), clip: new Mesh(), clamp: new Mesh() };
+	nodes.clip.material = metal;
+	nodes.clamp.material = metal;
+	return { nodes, materials: { base: new MeshStandardMaterial(), metal } };
+}
+
+/** Escena con el GLB resuelto y los effects ya ejecutados (detectChanges los descarga). */
+function createSceneWithGltf(
+	data: TestGltf,
+	theme: Products3dBadgeTheme,
+): ComponentFixture<Products3dBadgeScene> {
+	gltfMock.data = data;
+	const fixture = createScene();
+	fixture.componentRef.setInput('theme', theme);
+	fixture.detectChanges();
+	return fixture;
+}
+
+/** Material aplicado al nodo clip tras el effect de tinte. */
+function clipMaterialOf(data: TestGltf): MeshStandardMaterial {
+	return data.nodes.clip.material as MeshStandardMaterial;
+}
+
 describe('Products3dBadgeScene', () => {
+	beforeEach(() => {
+		// Por defecto el GLB y la textura de la correa quedan SIN resolver (los tests del tinte y
+		// del teselado los sobrescriben): así el estado de los mocks no se filtra de un test a otro.
+		gltfMock.data = undefined;
+		textureMock.data = undefined;
+		frameSubscriptions.length = 0;
+	});
+
 	it("defaults cardBodyType to 'dynamic' (kinematicPosition switch belongs to the drag feature)", () => {
 		const fixture = createScene();
 
@@ -233,13 +324,34 @@ describe('Products3dBadgeScene', () => {
 		expect(internalsOf(fixture).layout).toBe(BADGE_LAYOUT);
 	});
 
-	it('positions the GLB visual group at the clip anchor (BADGE_PHYSICS.cardJointAnchor)', () => {
+	it('positions the GLB visual group at the rigid body origin (BADGE_CARD_MODEL.groupPosition)', () => {
 		const fixture = createScene();
 
-		// El grupo del GLB se sitúa en cardJointAnchor: alinea el centro de la tarjeta con el
-		// cuboid collider y el clip con el punto del spherical joint (sin offsets mágicos).
-		expect(internalsOf(fixture).cardAnchor).toBe(BADGE_PHYSICS.cardJointAnchor);
-		expect(internalsOf(fixture).cardAnchor).toBe(internalsOf(fixture).cardJointData.body2Anchor);
+		// El origen del GLB es el centro de la tarjeta = origen del body = centro del cuboid
+		// collider → el grupo visual va sin offset (constante propia, sin números mágicos).
+		expect(internalsOf(fixture).cardModelPosition).toBe(BADGE_CARD_MODEL.groupPosition);
+		expect(BADGE_CARD_MODEL.groupPosition).toEqual([0, 0, 0]);
+	});
+
+	it('keeps the visual anchor and the spherical joint anchor as separate values', () => {
+		const fixture = createScene();
+
+		// Regresión de la feature 13: ambos conceptos compartían BADGE_PHYSICS.cardJointAnchor,
+		// lo que ataba la posición del modelo al punto de agarre de la correa.
+		expect(internalsOf(fixture).cardModelPosition).not.toBe(
+			internalsOf(fixture).cardJointData.body2Anchor,
+		);
+		expect(BADGE_CARD_MODEL.groupPosition).not.toEqual(BADGE_PHYSICS.cardJointAnchor);
+	});
+
+	it('anchors the spherical joint above the card top edge (clip grab point of the GLB)', () => {
+		// Derivado del bounding box del GLB: clipMesh POSITION Y[0.917, 1.286] (top del clip,
+		// por donde el aro agarra la correa) y cardMesh Y[-1.125, 1.125] (= half-extent del
+		// cuboid). El anchor cae por encima del borde superior de la tarjeta, nunca dentro.
+		expect(BADGE_PHYSICS.cardJointAnchor).toEqual([0, 1.286, 0]);
+		expect(BADGE_PHYSICS.cardJointAnchor[1]).toBeGreaterThan(
+			BADGE_PHYSICS.cardColliderHalfExtents[1],
+		);
 	});
 
 	it('loads the card GLB from PRODUCTS_3D_CONFIG.cardModelUrl (no hardcoded URL)', () => {
@@ -296,15 +408,45 @@ describe('Products3dBadgeScene', () => {
 	it('derives the render texture options from BADGE_TEXTURE and BADGE_MAP_ANISOTROPY', () => {
 		const fixture = createScene();
 
-		// Config-driven, cero números mágicos: width/height = size del FBO; frames continuo
-		// (porqué documentado en BADGE_TEXTURE.frames); anisotropy va en las options porque
-		// es propiedad de la textura (fbo.texture), no del material.
+		// Config-driven, cero números mágicos: width/height = resolución del FBO; frames continuo
+		// (porqué documentado en BADGE_TEXTURE.frames); anisotropy y la transformada UV van en
+		// las options porque son propiedades de la textura (fbo.texture), no del material.
 		expect(internalsOf(fixture).renderTextureOptions).toEqual({
-			width: BADGE_TEXTURE.size,
-			height: BADGE_TEXTURE.size,
+			width: BADGE_TEXTURE.width,
+			height: BADGE_TEXTURE.height,
 			frames: BADGE_TEXTURE.frames,
 			anisotropy: BADGE_MAP_ANISOTROPY,
+			repeat: BADGE_TEXTURE.mapRepeat,
+			offset: BADGE_TEXTURE.mapOffset,
 		});
+	});
+
+	it('requests a render texture FBO with the aspect ratio of the card front face', () => {
+		const fixture = createScene();
+		const { width, height } = internalsOf(fixture).renderTextureOptions;
+
+		// El FBO que pide la ESCENA (no solo el de la config) tiene que llevar el ratio de la cara
+		// frontal del GLB: un FBO cuadrado sobre una cara 32:45 estira el arte y los textos
+		// (spec-03-F4v2, diagnóstico). Ancla independiente: el 32:45 del contrato del modelo.
+		expect(width / height).toBeCloseTo(
+			BADGE_PHYSICS.cardColliderHalfExtents[0] / BADGE_PHYSICS.cardColliderHalfExtents[1],
+			10,
+		);
+		expect(width).not.toBe(height);
+	});
+
+	it('samples the card map with the V inverted and the U untouched', () => {
+		const fixture = createScene();
+		const { repeat, offset } = internalsOf(fixture).renderTextureOptions;
+
+		// Invariante que corrige el choque de convenciones (ver BADGE_TEXTURE.mapRepeat): los UV
+		// del GLB son glTF (v = 0 arriba) y la textura del render target es GL (v = 0 abajo), así
+		// que la transformada aplicada debe ser exactamente v' = 1 - v.
+		expect(offset[1] + 0 * repeat[1]).toBe(1);
+		expect(offset[1] + 1 * repeat[1]).toBe(0);
+		// La U se muestrea sin tocar: la cara +Z del GLB no está espejada en horizontal.
+		expect(offset[0] + 0 * repeat[0]).toBe(0);
+		expect(offset[0] + 1 * repeat[0]).toBe(1);
 	});
 
 	it('exposes the lanyard band material config from BADGE_BAND (no magic numbers)', () => {
@@ -313,11 +455,81 @@ describe('Products3dBadgeScene', () => {
 		expect(internalsOf(fixture).band).toBe(BADGE_BAND);
 	});
 
-	it('drives the band texture repeat from BADGE_BAND.repeat ([-4, 1], no magic numbers)', () => {
+	it('derives the band texture repeat from the REAL aspect of the resolved texture', () => {
+		// El aspecto solo se conoce tras cargar la imagen: el computed lee image.width/height de la
+		// textura ya resuelta. Se usa un asset 8:1 a propósito, DISTINTO del de referencia: así el
+		// test cae si el componente ignora la textura y se queda en el fallback.
+		textureMock.data = { image: { width: 2048, height: 256 } };
 		const fixture = createScene();
 
-		// El template bindea [repeat]="band.repeat"; la tupla vive en config, no en el componente.
-		expect(internalsOf(fixture).band.repeat).toEqual([-4, 1]);
+		expect(internalsOf(fixture).bandRepeat()).toEqual(bandRepeatFor(2048 / 256));
+		expect(internalsOf(fixture).bandRepeat()).not.toEqual(
+			bandRepeatFor(BADGE_BAND.referenceTextureAspect),
+		);
+	});
+
+	it('retiles when the artwork aspect changes (a 16:1 strip is not tiled like a 4:1 one)', () => {
+		// Discriminante frente a un repeat fijo: con el mismo componente, otro arte → otro teselado.
+		// 784 × 49 es un 16:1 cualquiera, no las dimensiones de ningún fichero; lo único que importa
+		// es que su aspecto difiera del 4:1 de referencia para que el fallback no pueda colarse.
+		textureMock.data = { image: { width: 784, height: 49 } };
+		const fixture = createScene();
+
+		const [tiles] = internalsOf(fixture).bandRepeat();
+		expect(tiles).toBeCloseTo(bandRepeatFor(784 / 49)[0], 6);
+		expect(tiles).not.toBeCloseTo(bandRepeatFor(BADGE_BAND.referenceTextureAspect)[0], 2);
+	});
+
+	it('falls back to the reference tiling while the band texture is unresolved (never NaN)', () => {
+		// useMap = 0: no hay imagen que medir. El uniform debe seguir siendo un número, o la correa
+		// se queda sin textura al resolver sin decir por qué.
+		const fixture = createScene();
+
+		const repeat = internalsOf(fixture).bandRepeat();
+		expect(repeat).toEqual(bandRepeatFor(BADGE_BAND.referenceTextureAspect));
+		expect(Number.isNaN(repeat[0])).toBe(false);
+	});
+
+	it('falls back when the resolved texture exposes no measurable dimensions', () => {
+		// Textura resuelta pero sin image (o con dimensiones a 0): la división daría 0/0 = NaN.
+		textureMock.data = { image: undefined };
+		const fixture = createScene();
+
+		expect(internalsOf(fixture).bandRepeat()).toEqual(
+			bandRepeatFor(BADGE_BAND.referenceTextureAspect),
+		);
+	});
+
+	it('tiles the band texture preserving the aspect ratio of a 4:1 lanyard artwork', () => {
+		// Invariante geométrica entre constantes independientes (derivación completa en
+		// bandRepeatFor): con sizeAttenuation (default de meshline) el ancho de la correa en
+		// unidades de mundo es lineWidth * tan(fov/2), NO lineWidth; el largo son los 3 rope
+		// joints de la cadena. Una tesela debe medir `aspecto` veces el ancho para no estirarse.
+		// El arte de referencia 4:1 es el que ancla el -3.383 histórico; aquí es solo un aspecto de
+		// entrada, no las dimensiones de ningún fichero (por eso se escribe como aspecto, y el alto
+		// es arbitrario). Que un arte más alargado se tesele distinto lo cubre el test de arriba.
+		const bandWidth = BADGE_BAND.lineWidth * Math.tan((BADGE_CAMERA.fov * Math.PI) / 360);
+		const bandLength = 3 * BADGE_PHYSICS.segmentLength;
+		const textureAspect = 4;
+		const tiles = bandLength / (textureAspect * bandWidth);
+
+		textureMock.data = { image: { width: textureAspect * 128, height: 128 } };
+		const fixture = createScene();
+		const repeat = internalsOf(fixture).bandRepeat();
+
+		expect(Math.abs(repeat[0])).toBeCloseTo(tiles, 2);
+		// Signo negativo = U invertida (orientación del arte); la V no se tesela a lo ancho.
+		expect(repeat[0]).toBeLessThan(0);
+		expect(repeat[1]).toBe(1);
+	});
+
+	it('declares transparent on the band material without dropping depthTest: false', () => {
+		// Sin transparent, los píxeles a alfa 0 del PNG (RGB 0,0,0) pintan la correa de negro.
+		// depthTest: false se conserva: la correa se dibuja siempre encima de la tarjeta.
+		const fixture = createScene();
+
+		expect(internalsOf(fixture).band.transparent).toBe(true);
+		expect(internalsOf(fixture).band.depthTest).toBe(false);
 	});
 
 	it('loads the band texture from theme.bandTextureUrl (no hardcoded URL)', () => {
@@ -370,5 +582,402 @@ describe('Products3dBadgeScene', () => {
 		expect(second).toBe(first);
 		expect(second.x).toBe(1280);
 		expect(second.y).toBe(720);
+	});
+
+	describe('band material (end-cap patch)', () => {
+		/**
+		 * Template REAL de la escena. Los tests montan un template vacío (sin WebGL), así que se lee
+		 * de los metadatos del decorador: los mismos que usa TestBed.overrideComponent.
+		 */
+		function sceneTemplate(): string {
+			const metadata = Products3dBadgeScene as unknown as {
+				decorators?: { args?: { template?: string }[] }[];
+			};
+			return metadata.decorators?.[0]?.args?.[0]?.template ?? '';
+		}
+
+		/** Etiqueta del material de la correa y sus property bindings `[prop]="expr"`. */
+		function bandMaterialBindings(): Record<string, string> {
+			const tag = /<ngt-badge-band-material\b[^>]*\/>/.exec(sceneTemplate())?.[0] ?? '';
+			return Object.fromEntries(
+				[...tag.matchAll(/\[(\w+)\]="([^"]*)"/g)].map(([, name, expression]) => [name, expression]),
+			);
+		}
+
+		it('renders the band with <ngt-badge-band-material>, not the unpatched meshline material', () => {
+			const template = sceneTemplate();
+
+			expect(template).toContain('<ngt-mesh-line-geometry #bandGeometry />');
+			expect(template).toContain('<ngt-badge-band-material');
+			expect(template).not.toContain('<ngt-mesh-line-material');
+		});
+
+		it('registers BadgeBandMaterial in the angular-three catalogue under the element name', () => {
+			createScene();
+
+			// El renderer resuelve <ngt-badge-band-material> con kebabToPascal('badge-band-material').
+			expect(TestBed.inject(NGT_CATALOGUE)['BadgeBandMaterial']).toBe(BadgeBandMaterial);
+		});
+
+		it('keeps every band material binding it had on the meshline material', () => {
+			expect(bandMaterialBindings()).toEqual({
+				map: 'bandMap()',
+				useMap: 'bandMap() ? 1 : 0',
+				repeat: 'bandRepeat()',
+				color: 'bandColor()',
+				resolution: 'resolution()',
+				lineWidth: 'band.lineWidth',
+				depthTest: 'band.depthTest',
+				transparent: 'band.transparent',
+			});
+		});
+	});
+
+	describe('metal tint (clip/clamp)', () => {
+		it('tints clip and clamp with theme.colors.clip on a single shared clone', () => {
+			const data = makeGltfData();
+
+			createSceneWithGltf(data, { ...THEME, colors: { clip: '#ff0055' } });
+
+			// Un solo clon para los dos nodos: el GLB los servía con la MISMA instancia de metal.
+			expect(data.nodes.clip.material).toBe(data.nodes.clamp.material);
+			expect(clipMaterialOf(data).color.getHexString()).toBe('ff0055');
+		});
+
+		it('clones the GLB metal material instead of mutating it', () => {
+			const data = makeGltfData();
+			const original = data.materials.metal;
+
+			createSceneWithGltf(data, { ...THEME, colors: { clip: '#ff0055' } });
+
+			// El GLB cachea `metal` entre recargas y lo comparte: teñirlo in situ filtraría el
+			// color a otros usos y persistiría tras cambiar de tema.
+			expect(data.nodes.clip.material).not.toBe(original);
+			expect(original.color.getHexString()).toBe('ffffff');
+		});
+
+		it('falls back to theme.baseColor when theme.colors.clip is absent', () => {
+			const data = makeGltfData();
+
+			createSceneWithGltf(data, { ...THEME, baseColor: '#123456' });
+
+			expect(clipMaterialOf(data).color.getHexString()).toBe('123456');
+		});
+
+		it('falls back to BADGE_BASE_COLOR when neither colors.clip nor baseColor are set', () => {
+			const data = makeGltfData();
+
+			createSceneWithGltf(data, THEME);
+
+			// Con el default negro siempre hay color ⇒ el metal SIEMPRE se tiñe: la rama
+			// "sin color → material original del GLB" ya no existe (spec-03-F4v2 R2).
+			expect(clipMaterialOf(data).color.getHexString()).toBe(BADGE_BASE_COLOR.slice(1));
+			expect(data.nodes.clip.material).not.toBe(data.materials.metal);
+		});
+
+		it('lets theme.colors.clip win over theme.baseColor', () => {
+			const data = makeGltfData();
+
+			createSceneWithGltf(data, {
+				...THEME,
+				baseColor: '#123456',
+				colors: { clip: '#ff0055' },
+			});
+
+			expect(clipMaterialOf(data).color.getHexString()).toBe('ff0055');
+		});
+
+		it('retints on theme.colors.clip changes without recreating the scene, disposing the old clone', () => {
+			const data = makeGltfData();
+			const fixture = createSceneWithGltf(data, { ...THEME, colors: { clip: '#ff0055' } });
+			const instance = fixture.componentInstance;
+			const firstClone = clipMaterialOf(data);
+			let disposals = 0;
+			firstClone.addEventListener('dispose', () => {
+				disposals += 1;
+			});
+
+			fixture.componentRef.setInput('theme', { ...THEME, colors: { clip: '#00ff00' } });
+			fixture.detectChanges();
+
+			expect(fixture.componentInstance).toBe(instance);
+			expect(clipMaterialOf(data)).not.toBe(firstClone);
+			expect(clipMaterialOf(data).color.getHexString()).toBe('00ff00');
+			expect(data.nodes.clamp.material).toBe(data.nodes.clip.material);
+			// onCleanup del effect: clonar en cada re-ejecución no acumula materiales en GPU.
+			expect(disposals).toBe(1);
+		});
+
+		it('retints on theme.baseColor changes without recreating the scene', () => {
+			const data = makeGltfData();
+			const fixture = createSceneWithGltf(data, { ...THEME, baseColor: '#123456' });
+			const instance = fixture.componentInstance;
+
+			fixture.componentRef.setInput('theme', { ...THEME, baseColor: '#abcdef' });
+			fixture.detectChanges();
+
+			expect(fixture.componentInstance).toBe(instance);
+			expect(clipMaterialOf(data).color.getHexString()).toBe('abcdef');
+		});
+
+		it('disposes the tinted clone when the scene is destroyed', () => {
+			const data = makeGltfData();
+			const fixture = createSceneWithGltf(data, { ...THEME, colors: { clip: '#ff0055' } });
+			let disposals = 0;
+			clipMaterialOf(data).addEventListener('dispose', () => {
+				disposals += 1;
+			});
+
+			fixture.destroy();
+
+			expect(disposals).toBe(1);
+		});
+	});
+	describe('lanyard band loop (rendered pose, clamp slot, arc length)', () => {
+		type BodyName = 'fixed' | 'j1' | 'j2' | 'j3' | 'card';
+		type Tuple = [number, number, number];
+
+		/** Rigid body crudo de Rapier (fake): solo lo que tocan la entrada y los guards del loop. */
+		interface FakeRawBody {
+			translation: () => { x: number; y: number; z: number };
+			rotation: () => { x: number; y: number; z: number; w: number };
+			angvel: () => { x: number; y: number; z: number };
+			setAngvel: ReturnType<typeof vi.fn>;
+			wakeUp: ReturnType<typeof vi.fn>;
+			setNextKinematicTranslation: ReturnType<typeof vi.fn>;
+		}
+
+		/** Pose RENDERIZADA (Object3D) y pose FÍSICA cruda (raw), deliberadamente distintas. */
+		interface FakeBody {
+			object: Object3D;
+			raw: FakeRawBody | null;
+		}
+
+		// Pose renderizada de referencia (cadena colgando) y un desfase grande para la cruda: si el
+		// componente leyera rigidBody().translation(), los puntos caerían 10 uds más allá.
+		const RENDERED: Record<BodyName, Tuple> = {
+			fixed: [0.5, 4, 0],
+			j1: [0.5, 3, 0],
+			j2: [0.5, 2, 0],
+			j3: [0.5, 1, 0],
+			card: [0.5, -0.4, 0],
+		};
+		const RAW_OFFSET = 10;
+
+		function fakeBody(rendered: Tuple): FakeBody {
+			const object = new Object3D();
+			object.position.set(...rendered);
+			const raw = rendered.map((v) => v + RAW_OFFSET);
+			return {
+				object,
+				raw: {
+					translation: () => ({ x: raw[0], y: raw[1], z: raw[2] }),
+					rotation: () => ({ x: 0, y: 0, z: 0, w: 1 }),
+					angvel: () => ({ x: 0, y: 0, z: 0 }),
+					setAngvel: vi.fn(),
+					wakeUp: vi.fn(),
+					setNextKinematicTranslation: vi.fn(),
+				},
+			};
+		}
+
+		function fakeBodies(): Record<BodyName, FakeBody> {
+			return {
+				fixed: fakeBody(RENDERED.fixed),
+				j1: fakeBody(RENDERED.j1),
+				j2: fakeBody(RENDERED.j2),
+				j3: fakeBody(RENDERED.j3),
+				card: fakeBody(RENDERED.card),
+			};
+		}
+
+		/**
+		 * Sustituye las viewChild de la escena (el template es vacío en test) por bodies fake con la
+		 * forma pública de NgtrRigidBody (`rigidBody()` + `objectRef`) y por la geometría de meshline.
+		 * Devuelve el espía de `setPoints`.
+		 */
+		function rigScene(
+			fixture: ComponentFixture<Products3dBadgeScene>,
+			bodies: Record<BodyName, FakeBody>,
+		): ReturnType<typeof vi.fn> {
+			const setPoints = vi.fn();
+			const target = fixture.componentInstance as unknown as Record<string, unknown>;
+			const asViewChild = (body: FakeBody) => () => ({
+				rigidBody: () => body.raw,
+				objectRef: { nativeElement: body.object },
+			});
+			target['fixedBody'] = asViewChild(bodies.fixed);
+			target['j1Body'] = asViewChild(bodies.j1);
+			target['j2Body'] = asViewChild(bodies.j2);
+			target['j3Body'] = asViewChild(bodies.j3);
+			target['cardBody'] = asViewChild(bodies.card);
+			target['bandGeometry'] = () => ({ nativeElement: { setPoints } });
+			return setPoints;
+		}
+
+		/** Un frame del loop: callbacks por prioridad ascendente (orden estable), como angular-three. */
+		function runFrame(extra: FrameSubscription[] = [], maxPriority = Infinity): void {
+			const state: FrameState = {
+				delta: 1 / 60,
+				camera: new PerspectiveCamera(),
+				pointer: new Vector2(),
+			};
+			[...frameSubscriptions, ...extra]
+				.filter((subscription) => subscription.priority <= maxPriority)
+				.sort((a, b) => a.priority - b.priority)
+				.forEach((subscription) => subscription.callback(state));
+		}
+
+		function bandPointsOf(fixture: ComponentFixture<Products3dBadgeScene>): Vector3[] {
+			return (fixture.componentInstance as unknown as { bandPoints: Vector3[] }).bandPoints;
+		}
+
+		/** Ranura del clamp en mundo por el camino de matrices de three (ancla independiente). */
+		function attachPointOn(card: Object3D): Vector3 {
+			card.updateMatrixWorld();
+			return card.localToWorld(new Vector3(...BADGE_CARD_MODEL.bandAttachPoint));
+		}
+
+		function spacingRatio(points: Vector3[]): number {
+			const chords = points.slice(1).map((point, i) => point.distanceTo(points[i]));
+			return Math.max(...chords) / Math.min(...chords);
+		}
+
+		it('registers the physics input before the Rapier step and the band after it', () => {
+			createScene();
+
+			const priorities = frameSubscriptions.map((subscription) => subscription.priority);
+			expect([...priorities].sort((a, b) => a - b)).toEqual([
+				BADGE_LOOP_PRIORITY.input,
+				BADGE_LOOP_PRIORITY.band,
+			]);
+			expect(BADGE_LOOP_PRIORITY.input).toBeLessThan(BADGE_LOOP_PRIORITY.physicsStep);
+			expect(BADGE_LOOP_PRIORITY.band).toBeGreaterThan(BADGE_LOOP_PRIORITY.physicsStep);
+		});
+
+		it('builds the band from the RENDERED Object3D poses, not from rigidBody().translation()', () => {
+			const fixture = createScene();
+			rigScene(fixture, fakeBodies());
+
+			runFrame();
+
+			const [, j2, j1, fixed] = bandPointsOf(fixture);
+			expect(fixed.toArray()).toEqual(RENDERED.fixed);
+			expect(j1.toArray()).toEqual(RENDERED.j1);
+			expect(j2.toArray()).toEqual(RENDERED.j2);
+			// La pose cruda (10 uds más allá) no aparece en ningún punto de control.
+			for (const point of bandPointsOf(fixture)) {
+				expect(point.y).toBeLessThan(RAW_OFFSET / 2);
+			}
+		});
+
+		it('ends the band at bandAttachPoint on the rendered, rotated card pose, not at j3', () => {
+			const fixture = createScene();
+			const bodies = fakeBodies();
+			bodies.card.object.position.set(1.2, -0.6, 0.4);
+			bodies.card.object.quaternion.setFromEuler(new Euler(0.2, -0.6, 0.45));
+			// j3 lejos del aro a propósito: el joint no es rígido y su centro NO es el extremo.
+			bodies.j3.object.position.set(-1.5, 0.8, 0);
+			rigScene(fixture, bodies);
+
+			runFrame();
+
+			const end = bandPointsOf(fixture)[0];
+			expect(end.distanceTo(attachPointOn(bodies.card.object))).toBeLessThan(1e-9);
+			// Ni el centro de j3 ni el punto de la tarjeta sin rotar.
+			expect(end.distanceTo(bodies.j3.object.position)).toBeGreaterThan(0.5);
+			expect(
+				end.distanceTo(new Vector3(1.2, -0.6 + BADGE_CARD_MODEL.bandAttachPoint[1], 0.4)),
+			).toBeGreaterThan(0.1);
+		});
+
+		it('reads the pose that the physics step writes in the SAME frame', () => {
+			// Stepper fake a la prioridad de <ngtr-physics> (updatePriority): como Rapier con
+			// interpolate, escribe la pose interpolada en el Object3D. La correa, que corre después,
+			// tiene que ver ESA pose y no la del frame anterior.
+			const fixture = createScene();
+			const bodies = fakeBodies();
+			rigScene(fixture, bodies);
+			const stepper: FrameSubscription = {
+				priority: BADGE_LOOP_PRIORITY.physicsStep,
+				callback: () => {
+					bodies.card.object.position.set(-0.7, -0.9, 0.2);
+					bodies.card.object.quaternion.setFromEuler(new Euler(0, 0, -0.5));
+				},
+			};
+
+			runFrame([stepper]);
+
+			const end = bandPointsOf(fixture)[0];
+			expect(end.distanceTo(attachPointOn(bodies.card.object))).toBeLessThan(1e-9);
+		});
+
+		it('feeds meshline arc-length spaced points from the card end to the fixed anchor', () => {
+			// Pose muy desigual por parámetro: dos tramos cortos arriba y uno largo hasta la tarjeta.
+			const fixture = createScene();
+			const bodies = fakeBodies();
+			bodies.j1.object.position.set(0.5, 3.8, 0);
+			bodies.j2.object.position.set(0.5, 3.6, 0);
+			bodies.card.object.position.set(3, -2, 0);
+			const setPoints = rigScene(fixture, bodies);
+
+			runFrame();
+
+			const points = setPoints.mock.calls[0][0] as Vector3[];
+			const controls = bandPointsOf(fixture);
+			expect(points).toHaveLength(BADGE_PHYSICS.curvePoints + 1);
+			expect(points[0].distanceTo(controls[0])).toBeLessThan(1e-9);
+			expect(points[points.length - 1].distanceTo(bodies.fixed.object.position)).toBeLessThan(
+				1e-9,
+			);
+			// Discriminante: por parámetro (getPoints) este espaciado sería muy desigual.
+			const byParameter = new CatmullRomCurve3(
+				controls.map((point) => point.clone()),
+				false,
+				'chordal',
+			).getPoints(BADGE_PHYSICS.curvePoints);
+			expect(spacingRatio(byParameter)).toBeGreaterThan(2);
+			expect(spacingRatio(points)).toBeLessThan(1.02);
+		});
+
+		it('keeps the spacing even on the next frame after the chain moves (no stale arc lengths)', () => {
+			const fixture = createScene();
+			const bodies = fakeBodies();
+			const setPoints = rigScene(fixture, bodies);
+			runFrame();
+
+			bodies.card.object.position.set(-3, -1, 0.5);
+			runFrame();
+
+			const points = setPoints.mock.calls[1][0] as Vector3[];
+			expect(points[0].distanceTo(attachPointOn(bodies.card.object))).toBeLessThan(1e-9);
+			expect(spacingRatio(points)).toBeLessThan(1.02);
+		});
+
+		it('applies the drag target before the physics step, without touching the band yet', () => {
+			const fixture = createScene();
+			const bodies = fakeBodies();
+			const setPoints = rigScene(fixture, bodies);
+			const internals = fixture.componentInstance as unknown as {
+				dragged: { set: (value: boolean) => void };
+			};
+			internals.dragged.set(true);
+
+			runFrame([], BADGE_LOOP_PRIORITY.physicsStep - 1);
+
+			expect(bodies.card.raw?.setNextKinematicTranslation).toHaveBeenCalledTimes(1);
+			expect(setPoints).not.toHaveBeenCalled();
+		});
+
+		it('does not draw the band until the rigid bodies exist (Rapier WASM pending)', () => {
+			const fixture = createScene();
+			const bodies = fakeBodies();
+			bodies.card.raw = null;
+			const setPoints = rigScene(fixture, bodies);
+
+			runFrame();
+
+			expect(setPoints).not.toHaveBeenCalled();
+		});
 	});
 });
