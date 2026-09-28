@@ -377,11 +377,16 @@ cumplir exactamente:
   unidades de mundo (bounding box del mesh de `card`: X`[-0.8, 0.8]`, Y`[-1.125, 1.125]`,
   Z`[-0.01, 0.01]`). El collider físico es fijo en la lib (half-extents `[0.8, 1.125, 0.01]`):
   si cambias las proporciones del modelo, el visual y la física dejarán de coincidir.
-- **Punto de agarre de la correa**: el borde **superior del `clip`**, en **y ≈ 1.286** (el mesh
-  del clip abarca Y`[0.917, 1.286]`). Ahí ancla la lib el spherical joint del que cuelga la
-  tarjeta (`BADGE_PHYSICS.cardJointAnchor`). Si tu clip es más alto o más bajo, la correa
-  enganchará donde diga *tu* modelo solo si ajustas esa constante: el valor por defecto asume
-  este contrato.
+- **Enganche de la correa**: son **dos puntos distintos**, y un GLB propio debe respetar ambos.
+  - **Anclaje físico**: el borde **superior del `clip`**, en **y ≈ 1.286** (el mesh del clip
+    abarca Y`[0.917, 1.286]`). Ahí ancla la lib el spherical joint del que cuelga la tarjeta
+    (`BADGE_PHYSICS.cardJointAnchor`).
+  - **Extremo visual de la correa**: el centro de la **ranura superior del `clamp`**, en
+    **y ≈ 1.479** (ranura pasante Y`[1.458, 1.500]`, ≈ 0.25 de ancho, más que los 0.2217 de la
+    correa). Ahí termina la correa, que se calcula cada frame con la pose renderizada de la
+    tarjeta (`BADGE_CARD_MODEL.bandAttachPoint`).
+  - Los dos valores por defecto asumen este contrato. Si tu `clip` o tu `clamp` están a otra
+    altura, ajusta la constante que corresponda.
 - **UVs**: el mesh de `card` necesita `TEXCOORD_0`; sobre esas UVs se proyecta la textura
   dinámica del socio (RenderTexture). Sin UVs el frente sale liso. La cara frontal (+Z) debe
   cubrir `[0, 1]²`. **Ojo con la V**: el unwrap de Blender y la textura de un render target usan
@@ -402,7 +407,10 @@ Si quieres componer el badge con otros elementos 3D, la lib exporta la escena f�
 
 - `provideNgtRenderer()` en la ruta y `provideProducts3d({ cardModelUrl })` (la escena inyecta
   `PRODUCTS_3D_CONFIG`).
-- Envolverla en `<ngtr-physics>` (la escena crea rigid bodies y joints Rapier).
+- Envolverla en `<ngtr-physics>` (la escena crea rigid bodies y joints Rapier) con
+  `updatePriority: BADGE_LOOP_PRIORITY.physicsStep` en sus `[options]`: la correa se construye con la
+  pose ya interpolada del frame, así que el paso físico tiene que ir antes que ella. Sin esa opción
+  el orden queda al azar y el extremo de la correa puede temblar respecto a la tarjeta.
 - Pasar un tema COMPLETO y válido por `[theme]` (la validación temprana vive en el wrapper
   `Products3dBadge`, no en la escena).
 - Tu propia iluminación: el ambient + environment con lightformers pertenecen al wrapper.
@@ -420,6 +428,7 @@ import { NgtCanvas } from 'angular-three/dom';
 import { NgtrPhysics } from 'angular-three-rapier';
 import {
 	BADGE_CAMERA,
+	BADGE_LOOP_PRIORITY,
 	BADGE_PHYSICS,
 	Products3dBadgeScene,
 	type BadgeMemberData,
@@ -451,6 +460,7 @@ export class CustomBadgeCanvasComponent {
 		gravity: BADGE_PHYSICS.gravity,
 		timeStep: BADGE_PHYSICS.timeStep,
 		interpolate: true,
+		updatePriority: BADGE_LOOP_PRIORITY.physicsStep,
 	};
 
 	protected readonly member = signal<BadgeMemberData>({

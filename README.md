@@ -101,7 +101,9 @@ Geometría única para todos los temas. Requisitos:
 - Materiales nombrados: `base` (card, recibe textura dinámica), `metal` (clip + clamp)
 - Origen en el **centro de la tarjeta** (nodo `card` con transformación identidad); coincide con
   el centro del collider físico
-- Punto de agarre de la correa = borde superior del `clip`, **y ≈ 1.286**
+- Enganche de la correa en dos puntos: anclaje físico = borde superior del `clip`, **y ≈ 1.286**
+  (`BADGE_PHYSICS.cardJointAnchor`); extremo visual = centro de la ranura superior del `clamp`,
+  **y ≈ 1.479** (`BADGE_CARD_MODEL.bandAttachPoint`)
 - Transforms aplicados, Y-up, unidades métricas
 - El contrato completo (dimensiones, UVs, Draco) está en
   [`projects/ngx-products-3d/README.md`](projects/ngx-products-3d/README.md#contrato-del-modelo-glb)

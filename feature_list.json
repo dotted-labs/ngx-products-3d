@@ -151,6 +151,42 @@
         "pnpm ng test ngx-products-3d muestra > 0 tests y todos verdes"
       ],
       "status": "pending"
+    },
+    {
+      "id": 8,
+      "name": "badge-band-clip-sync",
+      "title": "Correa: sin parpadeo y anclada a la abertura del enganche",
+      "spec": "hotfix",
+      "phase": 1,
+      "depends_on": [],
+      "description": "Hotfix fuera de spec-04 (reporte de Sergio, 2026-09-28, vídeo parpadeo.mp4). La correa lee la pose física cruda (j3/j1/j2/fixed.translation()) mientras la tarjeta se pinta interpolada (interpolate:true, timeStep 1/60) → parpadeo en la unión; y su extremo es el centro de j3 (joint no rígido, top del clip a 1.286) en vez de la abertura del clamp (≈ y 1.33 local). Encargo completo, diagnóstico y criterios en progress/task_band-clip-sync.md.",
+      "acceptance_criteria": [
+        "La correa se construye con la pose renderizada (interpolada) de los bodies",
+        "El extremo inferior es un punto local de la tarjeta en el centro de la abertura del clamp, derivado del GLB y documentado; no depende de j3",
+        "Muestreo por longitud de arco con updateArcLengths() (o justificación escrita)",
+        "Sin allocations nuevas por frame en beforeRender",
+        "Tests nuevos que fallan con el comportamiento anterior",
+        "pnpm build / lint / test / build del playground en verde"
+      ],
+      "status": "done"
+    },
+    {
+      "id": 9,
+      "name": "badge-band-endcap",
+      "title": "Correa: extremo sin cuña ni parpadeo (parche del shader de meshline)",
+      "spec": "hotfix",
+      "phase": 1,
+      "depends_on": [8],
+      "description": "Hotfix tras la N3 de la feature 8 (Sergio, 2026-09-28): altura correcta, pero el extremo de la correa se pinza en una V y parpadea. Causa: el vertex shader de meshline 3.3.1 detecta los extremos con igualdad float exacta (nextP == currentP), que falla porque currentP sale de (aspect·X)/(aspect·W) → dirección aleatoria en el último par de vértices. Encargo completo en progress/task_band-endcap.md.",
+      "acceptance_criteria": [
+        "Extremos detectados con tolerancia, sin igualdad float exacta",
+        "Ancho, teselado y uniforms sin cambios",
+        "Aviso dev y degradación sin parche si el shader de meshline cambia",
+        "Sin allocations nuevas por frame",
+        "Tests nuevos que fallan con el shader sin parchear",
+        "pnpm build / lint / test / build del playground en verde"
+      ],
+      "status": "done"
     }
   ]
 }

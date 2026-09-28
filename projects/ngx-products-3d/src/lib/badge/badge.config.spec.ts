@@ -2,7 +2,9 @@ import {
 	bandRepeatFor,
 	BADGE_BAND,
 	BADGE_CAMERA,
+	BADGE_CARD_MODEL,
 	BADGE_FRONT_FACE,
+	BADGE_LOOP_PRIORITY,
 	BADGE_PHYSICS,
 	BADGE_TEXT_LAYOUT,
 	BADGE_TEXTURE,
@@ -272,5 +274,85 @@ describe('bandRepeatFor', () => {
 
 	it('keeps BADGE_BAND.referenceTextureAspect at the 4:1 of the reference artwork', () => {
 		expect(BADGE_BAND.referenceTextureAspect).toBe(1024 / 256);
+	});
+});
+
+/**
+ * Huecos pasantes del `clamp` de `membresia.glb` en el eje x = 0, FIJADOS A MANO desde el GLB
+ * (transform del nodo aplicado; intersección de sus triángulos con el plano x = 0). Anclas
+ * INDEPENDIENTES de `BADGE_CARD_MODEL.bandAttachPoint`: si alguien lo mueve fuera de la ranura, o
+ * cambia el modelo sin revisar el punto, estos tests caen.
+ */
+const CLAMP_SLOT_Y: [number, number] = [1.458, 1.5];
+const CLAMP_LOOP_Y: [number, number] = [1.176, 1.298];
+/** Ancho de la ranura a media altura (X[-0.123, 0.128]) y ancho máx. del ojal (X[-0.108, 0.109]). */
+const CLAMP_SLOT_WIDTH = 0.251;
+const CLAMP_LOOP_WIDTH = 0.218;
+
+describe('BADGE_CARD_MODEL.bandAttachPoint (band end at the clamp slot)', () => {
+	const [x, y, z] = BADGE_CARD_MODEL.bandAttachPoint;
+
+	it('sits inside the upper slot of the clamp, where the strap goes through', () => {
+		expect(y).toBeGreaterThan(CLAMP_SLOT_Y[0]);
+		expect(y).toBeLessThan(CLAMP_SLOT_Y[1]);
+		expect(y).toBeCloseTo((CLAMP_SLOT_Y[0] + CLAMP_SLOT_Y[1]) / 2, 3);
+	});
+
+	it('is centred on the card axis and on the clamp plane', () => {
+		expect(x).toBe(0);
+		expect(z).toBe(0);
+	});
+
+	it('is not the physical joint anchor: it sits above the clip top, out of the lower loop', () => {
+		// El clip engancha en el ojal inferior (su top, cardJointAnchor, cae dentro del ojal); la
+		// correa pasa por la ranura de arriba. Confundirlos devolvería el extremo a j3/el clip.
+		expect(BADGE_PHYSICS.cardJointAnchor[1]).toBeGreaterThan(CLAMP_LOOP_Y[0]);
+		expect(BADGE_PHYSICS.cardJointAnchor[1]).toBeLessThan(CLAMP_LOOP_Y[1]);
+		expect(y).toBeGreaterThan(CLAMP_LOOP_Y[1]);
+		expect(y).toBeGreaterThan(BADGE_PHYSICS.cardJointAnchor[1]);
+	});
+
+	it('picks the only opening the strap fits through (band width vs slot/loop width)', () => {
+		// Ancho real de la correa en mundo: lineWidth * tan(fov/2) (ver BADGE_BAND.lineWidth).
+		const bandWidth = BADGE_BAND.lineWidth * Math.tan((BADGE_CAMERA.fov * Math.PI) / 360);
+
+		expect(bandWidth).toBeLessThan(CLAMP_SLOT_WIDTH);
+		expect(bandWidth).toBeGreaterThan(CLAMP_LOOP_WIDTH);
+	});
+});
+
+describe('BADGE_LOOP_PRIORITY (frame order: input -> physics step -> band)', () => {
+	it('runs the physics input before the Rapier step and the band after it', () => {
+		expect(BADGE_LOOP_PRIORITY.input).toBeLessThan(BADGE_LOOP_PRIORITY.physicsStep);
+		expect(BADGE_LOOP_PRIORITY.physicsStep).toBeLessThan(BADGE_LOOP_PRIORITY.band);
+	});
+
+	it('never takes over the render loop (angular-three renders manually above priority 0)', () => {
+		for (const priority of Object.values(BADGE_LOOP_PRIORITY)) {
+			expect(priority).toBeLessThanOrEqual(0);
+		}
+	});
+});
+
+/**
+ * Máxima discrepancia entre las dos proyecciones de un MISMO punto en el shader de meshline
+ * (`(aspect·X) / (aspect·W)` frente a `X / W`), FIJADA A MANO emulando float32 con `Math.fround`
+ * sobre 1e6 puntos del encuadre de la correa: 4.8e-7. Ancla independiente de la config.
+ */
+const FLOAT32_PROJECTION_NOISE = 5e-7;
+
+describe('BADGE_BAND.endCapTolerance (band end-cap detection in the vertex shader)', () => {
+	it('stays at least 100 times above the float32 noise of the exact comparison it replaces', () => {
+		expect(BADGE_BAND.endCapTolerance).toBeGreaterThanOrEqual(100 * FLOAT32_PROJECTION_NOISE);
+	});
+
+	it('stays at least 100 times below the projected length of a real band segment', () => {
+		// Espacio del shader: xy / w con la X por el aspecto → isótropo, 1 = media altura del
+		// encuadre, que a la distancia de la cámara mide distance · tan(fov/2) uds de mundo.
+		const segment =
+			(BADGE_BAND.ropeJoints * BADGE_PHYSICS.segmentLength) / BADGE_PHYSICS.curvePoints;
+		const halfHeight = BADGE_CAMERA.position[2] * Math.tan((BADGE_CAMERA.fov * Math.PI) / 360);
+
+		expect(BADGE_BAND.endCapTolerance).toBeLessThanOrEqual(segment / halfHeight / 100);
 	});
 });

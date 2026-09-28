@@ -17,6 +17,54 @@ Baseline heredado: `pnpm build` ✅ · `pnpm ng lint ngx-products-3d` ✅ ·
 `pnpm ng test ngx-products-3d` **160/160** ✅ · `pnpm ng build products-3d-playground` ✅.
 **El implementer debe revalidarlo antes de tocar nada** (§1 de `AGENTS.md`).
 
+## ✅ Cerrada (2026-09-28): hotfix `badge-band-endcap` (feature `id: 9`)
+
+- **Feature**: hotfix-9 — extremo de la correa deformado/parpadeante (encargo:
+  `progress/task_band-endcap.md`). Fuera de spec-04; T5–T7 no se tocan. Base = feature 8 sin commitear.
+- **Baseline revalidado** (implementer): build ✅ · lint ✅ · test **212/212** ✅.
+- **Estado**: **`done`**. **APPROVED** (`progress/review_band-endcap.md`). `feature_list.json` id 9 =
+  `done`. Informe: `progress/impl_band-endcap.md`. build ✅ · lint ✅ · test **232/232** ✅ ·
+  playground ✅; 8 mutaciones, ninguna sobrevive. Sin commitear: lo hace el leader.
+  **N3 visual pendiente de Sergio** (checklist en el informe).
+- **Plan** (ejecutado):
+  1. Fn pura que parchea el vertex shader de meshline: `nextP == currentP` / `prevP == currentP` →
+     `distance(...) < EPS`, con EPS en `badge.config.ts`; todo-o-nada, aviso dev si el patrón falta.
+  2. Subclase interna `BadgeBandMaterial extends MeshLineMaterial` que aplica el parche en el
+     constructor; `extend` + template usan `<ngt-badge-band-material>` con los mismos bindings.
+  3. Revisar otras fuentes de parpadeo en el extremo (muestreo por arco, alineación con cámara).
+  4. Tests N1 (shader real parcheado, aviso, escena usa el material) + discriminancia.
+- **Criterios de aceptación aplicables** (task_band-endcap.md): extremos con tolerancia · ancho,
+  teselado y uniforms sin cambios · aviso dev y degradación sin parche · sin allocations por frame ·
+  tests que fallan sin parche · build/lint/test/playground verdes · N3 pendiente de Sergio.
+
+## ✅ Cerrada (2026-09-28): hotfix `badge-band-clip-sync` (feature `id: 8`)
+
+- **Feature**: hotfix-8 — correa sin parpadeo y anclada a la abertura del enganche (encargo:
+  `progress/task_band-clip-sync.md`). Fuera de spec-04; T5–T7 no se tocan.
+- **Entorno**: el bloqueo de lint (`eslint-scope/dist` vacío) lo resolvió el leader con
+  `pnpm install --frozen-lockfile`. Baseline verde (build · lint · test 188/188 · playground).
+- **Estado**: **`done`**. **APPROVED** en la ronda 3 (`progress/review_band-clip-sync.md`). Las rondas 1
+  y 2 salieron CHANGES_REQUESTED solo por docs, y el leader corrigió los dos READMEs que pedía el
+  reviewer. `feature_list.json` id 8 = `done`. Sin commitear: lo hace el leader.
+  **N3 visual pendiente de Sergio** (checklist en el informe).
+- **Verificación**: implementado y verificado (build ✅ · lint ✅ · test **212/212** ✅ · playground ✅;
+  8 mutaciones de discriminancia, ninguna sobrevive). Informe: `progress/impl_band-clip-sync.md`.
+- ⚠️ **Desviación**: el extremo va en la **ranura superior** del clamp (y = **1.479**), no en ≈ 1.33.
+  Según el GLB, 1.33 es chapa maciza entre el ojal (donde engancha el clip) y la ranura (la única
+  abertura en la que cabe la correa, de 0.2217 de ancho). Datos en el informe.
+- **Plan** (ejecutado):
+  1. Extremos de la correa desde la pose RENDERIZADA (`NgtrRigidBody.objectRef`), no desde
+     `rigidBody().translation()`; orden del loop fijado con prioridades (input → paso físico →
+     correa).
+  2. Extremo de la tarjeta = punto local (`BADGE_CARD_MODEL.bandAttachPoint`) revalidado del GLB,
+     transformado con la pose renderizada de la tarjeta; sustituye a `j3`.
+  3. Muestreo por longitud de arco sin allocations por frame.
+  4. Tests N1 discriminantes + informe `progress/impl_band-clip-sync.md`.
+- **Criterios de aceptación aplicables** (feature_list.json id 8): pose renderizada · extremo = punto
+  local del clamp derivado del GLB, sin `j3` · muestreo por arco (o justificación) · sin allocations
+  nuevas por frame · tests que fallan con el comportamiento anterior · build/lint/test/playground
+  verdes. N3 pendiente de Sergio.
+
 ## ⚠️ El asset `band.png` se revisó a mitad de T5 — leer antes que nada
 
 **Sergio sustituyó `band.png` el 2026-08-06 a las 13:17:48**, con T5 ya implementada y verificada. Lo
@@ -347,3 +395,19 @@ abierta**: la 0.3.0 acumula ya los breaking de tres specs (F3, F4v2 y ésta).
   tocaba el fov) → T4, **cerrado y APPROVED** (`progress/review_spec-04-T4.md`). Fuera del backlog:
   ahora se deriva con `bandRepeatFor(aspect)`, y `BADGE_BAND.repeat` desaparece de la API pública
   (breaking a documentar en el CHANGELOG en **T7**).
+
+### Verificación del leader tras APPROVED — feature 8 `badge-band-clip-sync` (2026-09-28)
+
+`pnpm build` ✅ · `pnpm ng lint ngx-products-3d` ✅ · `pnpm ng test ngx-products-3d` **212/212** (13 ficheros) ✅ ·
+`pnpm ng build products-3d-playground` ✅. Sin commitear. **N3 visual pendiente de Sergio.**
+Nota de entorno: `node_modules` estaba corrupto (faltaban ficheros de `eslint-scope`, `aria-query`...) y el
+lint fallaba; se regeneró con `pnpm install --frozen-lockfile`.
+
+### Verificación del leader tras APPROVED — feature 9 `badge-band-endcap` (2026-09-28)
+
+`pnpm build` ✅ · `pnpm ng lint ngx-products-3d` ✅ · `pnpm ng test ngx-products-3d` **232/232** (14 ficheros) ✅ ·
+`pnpm ng build products-3d-playground` ✅. Sin commitear. **N3 visual pendiente de Sergio.**
+**Backlog para T7 (CHANGELOG)**: «Fixed: la correa sigue la pose renderizada y termina en la ranura
+del clamp (feature 8)», «Fixed: extremos de la correa sin cuña ni parpadeo, parche del shader de meshline
+(feature 9)», «Added: `BADGE_CARD_MODEL.bandAttachPoint`, `BADGE_BAND.endCapTolerance`,
+`BADGE_LOOP_PRIORITY`», y el aviso de `updatePriority` para consumidores con canvas propio.

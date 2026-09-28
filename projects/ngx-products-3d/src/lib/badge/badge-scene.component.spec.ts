@@ -52,14 +52,14 @@ vi.hoisted(() => {
 
 import { signal } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
-import { NGT_STORE, type NgtSize } from 'angular-three';
+import { NGT_CATALOGUE, NGT_STORE, type NgtSize } from 'angular-three';
 import {
 	NgtrPhysics,
 	type NgtrRigidBodyOptions,
 	type NgtrRopeJointParams,
 	type NgtrSphericalJointParams,
 } from 'angular-three-rapier';
-import { Mesh, MeshStandardMaterial, Vector2 } from 'three';
+import { CatmullRomCurve3, Euler, Mesh, MeshStandardMaterial, Object3D, PerspectiveCamera, Vector2, Vector3 } from 'three';
 import { PRODUCTS_3D_CONFIG } from '../tokens';
 import type {
 	BadgeMemberData,
@@ -67,6 +67,7 @@ import type {
 	Products3dBadgeTheme,
 	Products3dConfig,
 } from '../types';
+import { BadgeBandMaterial } from './badge-band-material';
 import { Products3dBadgeScene } from './badge-scene.component';
 import {
 	bandRepeatFor,
@@ -75,6 +76,7 @@ import {
 	BADGE_CAMERA,
 	BADGE_CARD_MODEL,
 	BADGE_LAYOUT,
+	BADGE_LOOP_PRIORITY,
 	BADGE_MAP_ANISOTROPY,
 	BADGE_MATERIAL_DEFAULTS,
 	BADGE_PHYSICS,
@@ -177,11 +179,29 @@ const PHYSICS_MOCK = {
 
 // Mock del store de angular-three (NGT_STORE): expone `size` como signal (alimenta la
 // `resolution` reactiva de la MeshLineMaterial) y `snapshot.internal.subscribe` (usado por
-// `beforeRender`, que aquí devuelve un unsubscribe no-op y nunca invoca el callback de frame).
+// `beforeRender`). El subscribe REGISTRA cada callback con su prioridad y nunca lo invoca por su
+// cuenta: solo los tests del loop (runFrame) ejecutan frames, en el orden de prioridad del loop real.
+interface FrameState {
+	delta: number;
+	camera: PerspectiveCamera;
+	pointer: Vector2;
+}
+interface FrameSubscription {
+	callback: (state: FrameState) => void;
+	priority: number;
+}
+const frameSubscriptions: FrameSubscription[] = [];
 const sizeSignal = signal<NgtSize>({ width: 800, height: 600, top: 0, left: 0 });
 const STORE_MOCK = {
 	size: sizeSignal,
-	snapshot: { internal: { subscribe: () => () => undefined } },
+	snapshot: {
+		internal: {
+			subscribe: (callback: FrameSubscription['callback'], priority = 0) => {
+				frameSubscriptions.push({ callback, priority });
+				return () => undefined;
+			},
+		},
+	},
 };
 
 function createScene(): ComponentFixture<Products3dBadgeScene> {
@@ -248,6 +268,7 @@ describe('Products3dBadgeScene', () => {
 		// del teselado los sobrescriben): así el estado de los mocks no se filtra de un test a otro.
 		gltfMock.data = undefined;
 		textureMock.data = undefined;
+		frameSubscriptions.length = 0;
 	});
 
 	it("defaults cardBodyType to 'dynamic' (kinematicPosition switch belongs to the drag feature)", () => {
@@ -563,6 +584,55 @@ describe('Products3dBadgeScene', () => {
 		expect(second.y).toBe(720);
 	});
 
+	describe('band material (end-cap patch)', () => {
+		/**
+		 * Template REAL de la escena. Los tests montan un template vacío (sin WebGL), así que se lee
+		 * de los metadatos del decorador: los mismos que usa TestBed.overrideComponent.
+		 */
+		function sceneTemplate(): string {
+			const metadata = Products3dBadgeScene as unknown as {
+				decorators?: { args?: { template?: string }[] }[];
+			};
+			return metadata.decorators?.[0]?.args?.[0]?.template ?? '';
+		}
+
+		/** Etiqueta del material de la correa y sus property bindings `[prop]="expr"`. */
+		function bandMaterialBindings(): Record<string, string> {
+			const tag = /<ngt-badge-band-material\b[^>]*\/>/.exec(sceneTemplate())?.[0] ?? '';
+			return Object.fromEntries(
+				[...tag.matchAll(/\[(\w+)\]="([^"]*)"/g)].map(([, name, expression]) => [name, expression]),
+			);
+		}
+
+		it('renders the band with <ngt-badge-band-material>, not the unpatched meshline material', () => {
+			const template = sceneTemplate();
+
+			expect(template).toContain('<ngt-mesh-line-geometry #bandGeometry />');
+			expect(template).toContain('<ngt-badge-band-material');
+			expect(template).not.toContain('<ngt-mesh-line-material');
+		});
+
+		it('registers BadgeBandMaterial in the angular-three catalogue under the element name', () => {
+			createScene();
+
+			// El renderer resuelve <ngt-badge-band-material> con kebabToPascal('badge-band-material').
+			expect(TestBed.inject(NGT_CATALOGUE)['BadgeBandMaterial']).toBe(BadgeBandMaterial);
+		});
+
+		it('keeps every band material binding it had on the meshline material', () => {
+			expect(bandMaterialBindings()).toEqual({
+				map: 'bandMap()',
+				useMap: 'bandMap() ? 1 : 0',
+				repeat: 'bandRepeat()',
+				color: 'bandColor()',
+				resolution: 'resolution()',
+				lineWidth: 'band.lineWidth',
+				depthTest: 'band.depthTest',
+				transparent: 'band.transparent',
+			});
+		});
+	});
+
 	describe('metal tint (clip/clamp)', () => {
 		it('tints clip and clamp with theme.colors.clip on a single shared clone', () => {
 			const data = makeGltfData();
@@ -661,6 +731,253 @@ describe('Products3dBadgeScene', () => {
 			fixture.destroy();
 
 			expect(disposals).toBe(1);
+		});
+	});
+	describe('lanyard band loop (rendered pose, clamp slot, arc length)', () => {
+		type BodyName = 'fixed' | 'j1' | 'j2' | 'j3' | 'card';
+		type Tuple = [number, number, number];
+
+		/** Rigid body crudo de Rapier (fake): solo lo que tocan la entrada y los guards del loop. */
+		interface FakeRawBody {
+			translation: () => { x: number; y: number; z: number };
+			rotation: () => { x: number; y: number; z: number; w: number };
+			angvel: () => { x: number; y: number; z: number };
+			setAngvel: ReturnType<typeof vi.fn>;
+			wakeUp: ReturnType<typeof vi.fn>;
+			setNextKinematicTranslation: ReturnType<typeof vi.fn>;
+		}
+
+		/** Pose RENDERIZADA (Object3D) y pose FÍSICA cruda (raw), deliberadamente distintas. */
+		interface FakeBody {
+			object: Object3D;
+			raw: FakeRawBody | null;
+		}
+
+		// Pose renderizada de referencia (cadena colgando) y un desfase grande para la cruda: si el
+		// componente leyera rigidBody().translation(), los puntos caerían 10 uds más allá.
+		const RENDERED: Record<BodyName, Tuple> = {
+			fixed: [0.5, 4, 0],
+			j1: [0.5, 3, 0],
+			j2: [0.5, 2, 0],
+			j3: [0.5, 1, 0],
+			card: [0.5, -0.4, 0],
+		};
+		const RAW_OFFSET = 10;
+
+		function fakeBody(rendered: Tuple): FakeBody {
+			const object = new Object3D();
+			object.position.set(...rendered);
+			const raw = rendered.map((v) => v + RAW_OFFSET);
+			return {
+				object,
+				raw: {
+					translation: () => ({ x: raw[0], y: raw[1], z: raw[2] }),
+					rotation: () => ({ x: 0, y: 0, z: 0, w: 1 }),
+					angvel: () => ({ x: 0, y: 0, z: 0 }),
+					setAngvel: vi.fn(),
+					wakeUp: vi.fn(),
+					setNextKinematicTranslation: vi.fn(),
+				},
+			};
+		}
+
+		function fakeBodies(): Record<BodyName, FakeBody> {
+			return {
+				fixed: fakeBody(RENDERED.fixed),
+				j1: fakeBody(RENDERED.j1),
+				j2: fakeBody(RENDERED.j2),
+				j3: fakeBody(RENDERED.j3),
+				card: fakeBody(RENDERED.card),
+			};
+		}
+
+		/**
+		 * Sustituye las viewChild de la escena (el template es vacío en test) por bodies fake con la
+		 * forma pública de NgtrRigidBody (`rigidBody()` + `objectRef`) y por la geometría de meshline.
+		 * Devuelve el espía de `setPoints`.
+		 */
+		function rigScene(
+			fixture: ComponentFixture<Products3dBadgeScene>,
+			bodies: Record<BodyName, FakeBody>,
+		): ReturnType<typeof vi.fn> {
+			const setPoints = vi.fn();
+			const target = fixture.componentInstance as unknown as Record<string, unknown>;
+			const asViewChild = (body: FakeBody) => () => ({
+				rigidBody: () => body.raw,
+				objectRef: { nativeElement: body.object },
+			});
+			target['fixedBody'] = asViewChild(bodies.fixed);
+			target['j1Body'] = asViewChild(bodies.j1);
+			target['j2Body'] = asViewChild(bodies.j2);
+			target['j3Body'] = asViewChild(bodies.j3);
+			target['cardBody'] = asViewChild(bodies.card);
+			target['bandGeometry'] = () => ({ nativeElement: { setPoints } });
+			return setPoints;
+		}
+
+		/** Un frame del loop: callbacks por prioridad ascendente (orden estable), como angular-three. */
+		function runFrame(extra: FrameSubscription[] = [], maxPriority = Infinity): void {
+			const state: FrameState = {
+				delta: 1 / 60,
+				camera: new PerspectiveCamera(),
+				pointer: new Vector2(),
+			};
+			[...frameSubscriptions, ...extra]
+				.filter((subscription) => subscription.priority <= maxPriority)
+				.sort((a, b) => a.priority - b.priority)
+				.forEach((subscription) => subscription.callback(state));
+		}
+
+		function bandPointsOf(fixture: ComponentFixture<Products3dBadgeScene>): Vector3[] {
+			return (fixture.componentInstance as unknown as { bandPoints: Vector3[] }).bandPoints;
+		}
+
+		/** Ranura del clamp en mundo por el camino de matrices de three (ancla independiente). */
+		function attachPointOn(card: Object3D): Vector3 {
+			card.updateMatrixWorld();
+			return card.localToWorld(new Vector3(...BADGE_CARD_MODEL.bandAttachPoint));
+		}
+
+		function spacingRatio(points: Vector3[]): number {
+			const chords = points.slice(1).map((point, i) => point.distanceTo(points[i]));
+			return Math.max(...chords) / Math.min(...chords);
+		}
+
+		it('registers the physics input before the Rapier step and the band after it', () => {
+			createScene();
+
+			const priorities = frameSubscriptions.map((subscription) => subscription.priority);
+			expect([...priorities].sort((a, b) => a - b)).toEqual([
+				BADGE_LOOP_PRIORITY.input,
+				BADGE_LOOP_PRIORITY.band,
+			]);
+			expect(BADGE_LOOP_PRIORITY.input).toBeLessThan(BADGE_LOOP_PRIORITY.physicsStep);
+			expect(BADGE_LOOP_PRIORITY.band).toBeGreaterThan(BADGE_LOOP_PRIORITY.physicsStep);
+		});
+
+		it('builds the band from the RENDERED Object3D poses, not from rigidBody().translation()', () => {
+			const fixture = createScene();
+			rigScene(fixture, fakeBodies());
+
+			runFrame();
+
+			const [, j2, j1, fixed] = bandPointsOf(fixture);
+			expect(fixed.toArray()).toEqual(RENDERED.fixed);
+			expect(j1.toArray()).toEqual(RENDERED.j1);
+			expect(j2.toArray()).toEqual(RENDERED.j2);
+			// La pose cruda (10 uds más allá) no aparece en ningún punto de control.
+			for (const point of bandPointsOf(fixture)) {
+				expect(point.y).toBeLessThan(RAW_OFFSET / 2);
+			}
+		});
+
+		it('ends the band at bandAttachPoint on the rendered, rotated card pose, not at j3', () => {
+			const fixture = createScene();
+			const bodies = fakeBodies();
+			bodies.card.object.position.set(1.2, -0.6, 0.4);
+			bodies.card.object.quaternion.setFromEuler(new Euler(0.2, -0.6, 0.45));
+			// j3 lejos del aro a propósito: el joint no es rígido y su centro NO es el extremo.
+			bodies.j3.object.position.set(-1.5, 0.8, 0);
+			rigScene(fixture, bodies);
+
+			runFrame();
+
+			const end = bandPointsOf(fixture)[0];
+			expect(end.distanceTo(attachPointOn(bodies.card.object))).toBeLessThan(1e-9);
+			// Ni el centro de j3 ni el punto de la tarjeta sin rotar.
+			expect(end.distanceTo(bodies.j3.object.position)).toBeGreaterThan(0.5);
+			expect(
+				end.distanceTo(new Vector3(1.2, -0.6 + BADGE_CARD_MODEL.bandAttachPoint[1], 0.4)),
+			).toBeGreaterThan(0.1);
+		});
+
+		it('reads the pose that the physics step writes in the SAME frame', () => {
+			// Stepper fake a la prioridad de <ngtr-physics> (updatePriority): como Rapier con
+			// interpolate, escribe la pose interpolada en el Object3D. La correa, que corre después,
+			// tiene que ver ESA pose y no la del frame anterior.
+			const fixture = createScene();
+			const bodies = fakeBodies();
+			rigScene(fixture, bodies);
+			const stepper: FrameSubscription = {
+				priority: BADGE_LOOP_PRIORITY.physicsStep,
+				callback: () => {
+					bodies.card.object.position.set(-0.7, -0.9, 0.2);
+					bodies.card.object.quaternion.setFromEuler(new Euler(0, 0, -0.5));
+				},
+			};
+
+			runFrame([stepper]);
+
+			const end = bandPointsOf(fixture)[0];
+			expect(end.distanceTo(attachPointOn(bodies.card.object))).toBeLessThan(1e-9);
+		});
+
+		it('feeds meshline arc-length spaced points from the card end to the fixed anchor', () => {
+			// Pose muy desigual por parámetro: dos tramos cortos arriba y uno largo hasta la tarjeta.
+			const fixture = createScene();
+			const bodies = fakeBodies();
+			bodies.j1.object.position.set(0.5, 3.8, 0);
+			bodies.j2.object.position.set(0.5, 3.6, 0);
+			bodies.card.object.position.set(3, -2, 0);
+			const setPoints = rigScene(fixture, bodies);
+
+			runFrame();
+
+			const points = setPoints.mock.calls[0][0] as Vector3[];
+			const controls = bandPointsOf(fixture);
+			expect(points).toHaveLength(BADGE_PHYSICS.curvePoints + 1);
+			expect(points[0].distanceTo(controls[0])).toBeLessThan(1e-9);
+			expect(points[points.length - 1].distanceTo(bodies.fixed.object.position)).toBeLessThan(
+				1e-9,
+			);
+			// Discriminante: por parámetro (getPoints) este espaciado sería muy desigual.
+			const byParameter = new CatmullRomCurve3(
+				controls.map((point) => point.clone()),
+				false,
+				'chordal',
+			).getPoints(BADGE_PHYSICS.curvePoints);
+			expect(spacingRatio(byParameter)).toBeGreaterThan(2);
+			expect(spacingRatio(points)).toBeLessThan(1.02);
+		});
+
+		it('keeps the spacing even on the next frame after the chain moves (no stale arc lengths)', () => {
+			const fixture = createScene();
+			const bodies = fakeBodies();
+			const setPoints = rigScene(fixture, bodies);
+			runFrame();
+
+			bodies.card.object.position.set(-3, -1, 0.5);
+			runFrame();
+
+			const points = setPoints.mock.calls[1][0] as Vector3[];
+			expect(points[0].distanceTo(attachPointOn(bodies.card.object))).toBeLessThan(1e-9);
+			expect(spacingRatio(points)).toBeLessThan(1.02);
+		});
+
+		it('applies the drag target before the physics step, without touching the band yet', () => {
+			const fixture = createScene();
+			const bodies = fakeBodies();
+			const setPoints = rigScene(fixture, bodies);
+			const internals = fixture.componentInstance as unknown as {
+				dragged: { set: (value: boolean) => void };
+			};
+			internals.dragged.set(true);
+
+			runFrame([], BADGE_LOOP_PRIORITY.physicsStep - 1);
+
+			expect(bodies.card.raw?.setNextKinematicTranslation).toHaveBeenCalledTimes(1);
+			expect(setPoints).not.toHaveBeenCalled();
+		});
+
+		it('does not draw the band until the rigid bodies exist (Rapier WASM pending)', () => {
+			const fixture = createScene();
+			const bodies = fakeBodies();
+			bodies.card.raw = null;
+			const setPoints = rigScene(fixture, bodies);
+
+			runFrame();
+
+			expect(setPoints).not.toHaveBeenCalled();
 		});
 	});
 });

@@ -15,7 +15,7 @@ import { PRODUCTS_3D_BADGE_THEME } from '../tokens';
 import type { BadgeMemberData, Products3dBadgeTheme } from '../types';
 import { Products3dBadgeScene } from './badge-scene.component';
 import { assertValidBadgeTheme } from './badge-theme';
-import { BADGE_CAMERA, BADGE_LIGHTING, BADGE_PHYSICS } from './badge.config';
+import { BADGE_CAMERA, BADGE_LIGHTING, BADGE_LOOP_PRIORITY, BADGE_PHYSICS } from './badge.config';
 
 /**
  * Acreditación 3D de socio. Wrapper todo-en-uno: canvas + mundo físico + escena.
@@ -96,10 +96,13 @@ export class Products3dBadge {
 	protected readonly environmentOptions = BADGE_LIGHTING.environment;
 	protected readonly lightformers = BADGE_LIGHTING.lightformers;
 
+	// updatePriority: el paso físico corre ANTES de la correa de la escena, que se construye con la
+	// pose ya interpolada del frame (orden completo del loop en BADGE_LOOP_PRIORITY).
 	protected readonly physicsOptions = computed(() => ({
 		gravity: BADGE_PHYSICS.gravity,
 		timeStep: BADGE_PHYSICS.timeStep,
 		interpolate: true,
+		updatePriority: BADGE_LOOP_PRIORITY.physicsStep,
 		debug: this.debug(),
 	}));
 

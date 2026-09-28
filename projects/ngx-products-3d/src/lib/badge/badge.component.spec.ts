@@ -56,7 +56,7 @@ import { TestBed, type ComponentFixture } from '@angular/core/testing';
 import { PRODUCTS_3D_BADGE_THEME } from '../tokens';
 import type { BadgeMemberData, Products3dBadgeTheme } from '../types';
 import { Products3dBadge } from './badge.component';
-import { BADGE_LIGHTING, BADGE_PHYSICS } from './badge.config';
+import { BADGE_LIGHTING, BADGE_LOOP_PRIORITY, BADGE_PHYSICS } from './badge.config';
 
 interface BadgeInternals {
 	resolvedTheme: () => Products3dBadgeTheme;
@@ -64,6 +64,7 @@ interface BadgeInternals {
 		gravity: readonly [number, number, number];
 		timeStep: number;
 		interpolate: boolean;
+		updatePriority: number;
 		debug: boolean;
 	};
 	isBrowser: boolean;
@@ -203,6 +204,16 @@ describe('Products3dBadge', () => {
 			expect(options.gravity).toBe(BADGE_PHYSICS.gravity);
 			expect(options.timeStep).toBe(BADGE_PHYSICS.timeStep);
 			expect(options.interpolate).toBe(true);
+		});
+
+		it('steps the physics before the scene band reads the interpolated pose', () => {
+			const fixture = createBadge({ inputTheme: makeTheme('assets/font.json') });
+
+			// Sin updatePriority el orden paso↔correa queda al azar de la suscripción (el stepper
+			// se suscribe en un effect) y el extremo de la correa se desfasa de la tarjeta.
+			expect(internalsOf(fixture).physicsOptions().updatePriority).toBe(
+				BADGE_LOOP_PRIORITY.physicsStep,
+			);
 		});
 	});
 

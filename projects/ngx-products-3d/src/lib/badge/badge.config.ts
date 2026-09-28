@@ -47,6 +47,35 @@ export const BADGE_PHYSICS = {
 	spinCorrectionFactor: 0.25,
 	/** Puntos de muestreo de la curva Catmull-Rom para la correa */
 	curvePoints: 32,
+	/**
+	 * Divisiones con las que se mide la longitud de arco de la curva de la correa antes de
+	 * remuestrearla a `curvePoints` puntos EQUIESPACIADOS (`sampleCurveByArcLength`). Mismo valor que
+	 * el default de `Curve.arcLengthDivisions` de three: sobra precisión para una curva de 4 puntos
+	 * de control y ~3 uds de largo.
+	 */
+	curveArcLengthDivisions: 200,
+} as const;
+
+/**
+ * Prioridades del loop de render (`beforeRender` de angular-three) que fijan el ORDEN dentro de
+ * cada frame. angular-three ejecuta los suscriptores ordenados por prioridad ascendente (orden de
+ * suscripción si empatan), y una prioridad **> 0 toma el control del render** (el canvas deja de
+ * pintar solo), así que las tres son ≤ 0:
+ *
+ * 1. `input` — drag kinemático y anti-giro: escriben en los bodies ANTES del paso, para que el
+ *    paso de este mismo frame ya los consuma (sin un frame de retraso bajo el puntero).
+ * 2. `physicsStep` — el paso de Rapier (`updatePriority` de `<ngtr-physics>`, modo `follow`): avanza
+ *    el mundo y escribe en cada `Object3D` la pose INTERPOLADA que se va a pintar.
+ * 3. `band` — la correa, que se construye con esa pose ya interpolada. Si corriera antes del paso
+ *    usaría la pose del frame anterior y su extremo se separaría de la tarjeta (parpadeo).
+ *
+ * Sin `physicsStep` explícito el orden entre paso y correa quedaría al azar del orden de
+ * suscripción: el stepper se (re)suscribe dentro de un effect, después de la escena.
+ */
+export const BADGE_LOOP_PRIORITY = {
+	input: -2,
+	physicsStep: -1,
+	band: 0,
 } as const;
 
 /** Drag de la tarjeta con puntero (spec-02 Fase 1, feature badge-drag) */
@@ -100,6 +129,19 @@ export const BADGE_BAND = {
 	 * dejaría la correa sin textura y sin decir por qué.
 	 */
 	referenceTextureAspect: 4,
+	/**
+	 * Tolerancia con la que el vertex shader de la correa detecta sus EXTREMOS, en el espacio de
+	 * pantalla de meshline (`xy / w` con la X multiplicada por el aspecto del viewport: isótropo,
+	 * con la Y en [-1, 1]). meshline 3.3.1 lo hace con `==` exacto entre dos proyecciones que en
+	 * float32 no salen bit a bit iguales, y el extremo cogía una dirección aleatoria en cada frame.
+	 *
+	 * Margen por los dos lados:
+	 * - Ruido: emulando en float32 las dos proyecciones de un mismo punto, difieren en ≤ ~5e-7.
+	 * - Segmento real: la correa (~3 uds) se muestrea en `BADGE_PHYSICS.curvePoints` tramos de
+	 *   ~0.1 uds, que a la distancia de la cámara (13) con `fov` 25 proyectan a ~3e-2.
+	 * 1e-4 queda unas 200 veces por encima del ruido y unas 300 por debajo de un tramo real.
+	 */
+	endCapTolerance: 1e-4,
 } as const;
 
 /**
@@ -134,10 +176,11 @@ export function bandRepeatFor(textureAspect: number): [number, number] {
 }
 
 /**
- * Colocación del modelo GLB dentro del rigid body de la tarjeta (spec-03-F3). Es el anclaje
- * VISUAL, deliberadamente separado de `BADGE_PHYSICS.cardJointAnchor` (anclaje FÍSICO del
- * spherical joint): comparten sistema de coordenadas pero no significado, y confundirlos es
- * lo que rompió el enganche al cambiar de modelo.
+ * Colocación del modelo GLB dentro del rigid body de la tarjeta (spec-03-F3) y puntos VISUALES
+ * del modelo que consume la escena (el extremo de la correa). Deliberadamente separado de
+ * `BADGE_PHYSICS.cardJointAnchor` (anclaje FÍSICO del spherical joint): comparten sistema de
+ * coordenadas pero no significado, y confundirlos es lo que rompió el enganche al cambiar de
+ * modelo.
  */
 export const BADGE_CARD_MODEL = {
 	/**
@@ -151,6 +194,25 @@ export const BADGE_CARD_MODEL = {
 	 * offset cero, y el visual cae siempre donde colisiona y se arrastra la tarjeta.
 	 */
 	groupPosition: [0, 0, 0] as [number, number, number],
+	/**
+	 * Extremo inferior de la correa, en el sistema LOCAL del rigid body de la tarjeta: el centro de
+	 * la RANURA superior del `clamp`, por la que la correa simula pasar. Cada frame se transforma
+	 * con la pose renderizada de la tarjeta, así que el extremo va pegado al aro. NO es
+	 * `BADGE_PHYSICS.cardJointAnchor` (1.286, top del `clip`), que solo lo consume el joint.
+	 *
+	 * Derivado del GLB (`membresia.glb`, transform del nodo `clamp` aplicado: t ≈ [-0.016, -0.347,
+	 * 0.013], s ≈ [0.640, 1.229, 1.683], rot ≈ −90° en Y). El `clamp` ocupa
+	 * X[-0.219, 0.223] · Y[1.143, 1.564] · Z[-0.057, 0.053], y en el eje x = 0 tiene DOS huecos
+	 * pasantes:
+	 * - el ojal inferior, Y[1.176, 1.298], ancho máx. ≈ 0.218. En él engancha el `clip` (top 1.286).
+	 *   Es más estrecho que la correa (0.2217 uds, ver `BADGE_BAND.lineWidth`).
+	 * - la ranura superior, **Y[1.458, 1.500]** y X[-0.123, 0.128] a media altura (0.251 de ancho).
+	 *   Es la abertura de la correa: la única en la que cabe.
+	 * Entre ambos, Y[1.298, 1.458] es chapa maciza. Centro de la ranura ⇒ y = (1.458 + 1.500) / 2
+	 * ≈ **1.479**. x y z a 0: el centro medido es x ≈ 0.003 y el del aro es z ≈ −0.002, ruido de
+	 * modelado frente a los 0.25 de ancho de la ranura.
+	 */
+	bandAttachPoint: [0, 1.479, 0] as [number, number, number],
 } as const;
 
 /**
