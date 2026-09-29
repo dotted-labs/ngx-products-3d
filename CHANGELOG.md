@@ -7,7 +7,10 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 **breaking changes viajan en la versión menor** (`0.2.x` → `0.3.0`), nunca en un patch: un rango
 `^0.2.1` instalaría un patch automáticamente y rompería builds ajenos sin aviso.
 
-## [0.3.0] — sin publicar
+## [0.3.1] — 2026-09-29
+
+> Primera publicación de la línea 0.3: la 0.3.0 no llegó a publicarse en npm. Todo lo que sigue
+> aplica al actualizar desde la 0.2.1.
 
 Assets reales del badge (modelo Blender + correa texturizada) en sustitución de los assets demo, y
 **rediseño del frente de la tarjeta**: el arte del socio pasa a cubrir la cara frontal exacta
@@ -22,7 +25,7 @@ muestra hasta tenerlo todo cargado y entonces cae desde arriba.
 **1. Cambia el contrato del modelo GLB — el origen pasa a ser el centro de la tarjeta.**
 
 Hasta 0.2.1 la lib esperaba un GLB cuyo **origen fuese el punto de anclaje del clip**, con el nodo
-`card` desplazado `y = -1.45` para compensar. Desde 0.3.0 el contrato es el natural: **origen del
+`card` desplazado `y = -1.45` para compensar. Desde 0.3.1 el contrato es el natural: **origen del
 GLB = centro de la tarjeta**, nodo `card` en identidad.
 
 Este es el cambio peligroso, porque **no produce ningún error de compilación**: un modelo hecho
@@ -55,7 +58,7 @@ tarball publicado**, así que su retirada es formalmente breaking.
 
 Hasta 0.2.1 no había un ratio "correcto" para `baseTextures` / `defaultBaseTextureUrl`: el arte se
 pintaba sobre un plano de 5 × 5 unidades encuadrado por una cámara en **perspectiva** cuyo aspecto
-seguía al de la **ventana**, sobre un FBO cuadrado de 2000 × 2000. Desde 0.3.0 el arte cubre la cara
+seguía al de la **ventana**, sobre un FBO cuadrado de 2000 × 2000. Desde 0.3.1 el arte cubre la cara
 frontal exacta de la tarjeta, así que su contrato es:
 
 | Propiedad | Requisito |
@@ -78,7 +81,7 @@ lanza y no deja de renderizar**, y en un build de producción es muda.
 
 El layout de los textos del socio pasa de posiciones absolutas a **anclajes normalizados**:
 
-| 0.2.1 | 0.3.0 |
+| 0.2.1 | 0.3.1 |
 | --- | --- |
 | `position: [number, number, number]` | `anchor: [number, number]` normalizado (0-1) sobre la cara |
 | `rotation: [number, number, number]` | — (eliminado; los textos van planos sobre el frente) |
@@ -107,7 +110,7 @@ escena de textura— se elimina a favor de `frontPlaneSize`, derivado del rect d
 **6. `BADGE_BAND.repeat` desaparece: el teselado de la correa lo deriva `bandRepeatFor(aspect)`.**
 
 En 0.2.1 `BADGE_BAND.repeat` era una tupla literal (`[-4, 1]`) calculada para un arte 4:1. Desde
-0.3.0 no hay tupla: la lib mide el aspecto (ancho/alto) de la textura de la correa **ya cargada** y
+0.3.1 no hay tupla: la lib mide el aspecto (ancho/alto) de la textura de la correa **ya cargada** y
 llama a la función pública `bandRepeatFor(aspect)`, que devuelve el `[x, 1]` que mantiene el arte
 sin estirar:
 
@@ -279,7 +282,7 @@ por defecto y lo que lees si importas estas constantes para componer tu propia e
 ### Cambios de aspecto (sin cambio de API)
 
 - **Un tema sin `colors.clip` cambia de aspecto en clip y clamp.** En 0.2.1, sin `colors.clip` el
-  metal del GLB se usaba **tal cual**; desde 0.3.0 el clip y el clamp se tiñen siempre con el color
+  metal del GLB se usaba **tal cual**; desde 0.3.1 el clip y el clamp se tiñen siempre con el color
   resuelto `colors.clip ?? baseColor ?? BADGE_BASE_COLOR`, así que un tema que no defina ninguno de
   los dos pasa a mostrarlos **casi negros** (`'#111111'`, el default de `baseColor`) en vez del metal
   crudo. La API no cambia y nada deja de compilar: es solo aspecto. **Si quieres el metal del GLB visible, define

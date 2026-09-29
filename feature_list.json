@@ -1,6 +1,6 @@
 {
   "project": "ngx-products-3d",
-  "description": "Productos 3D interactivos para Angular (Angular Three v4). Sin spec activa. Última cerrada: docs/specs/spec-04-typography-band-assets.md (tipografía OTF, textos abajo-izquierda, color base #111111, correa band.png) + hotfix 8–11 (correa, fuentes CFF, carga y caída). Todo se pliega en la 0.3.0, que sigue SIN publicar en npm (ver progress/review_spec-04-T7.md §5). Specs completadas en docs/specs/; bitácora en progress/history.md.",
+  "description": "Productos 3D interactivos para Angular (Angular Three v4). Sin spec activa. Última cerrada: docs/specs/spec-04-typography-band-assets.md (tipografía OTF, textos abajo-izquierda, color base #111111, correa band.png) + hotfix 8–11 (correa, fuentes CFF, carga y caída). Todo se publica como 0.3.1 (la 0.3.0 nunca llegó a npm). Specs completadas en docs/specs/; bitácora en progress/history.md.",
   "rules": {
     "one_feature_at_a_time": true,
     "require_tests_to_close": true,

@@ -12,14 +12,14 @@ tier + nombre/número/tier del socio en Text3D) y todo el aspecto se controla po
 
 > ### ⚠️ Vienes de 0.2.x: lee esto antes de actualizar
 >
-> **0.3.0 cambia el contrato del modelo GLB y no da ningún error de compilación al hacerlo.** Hasta
+> **0.3.1 cambia el contrato del modelo GLB y no da ningún error de compilación al hacerlo.** Hasta
 > 0.2.1 el origen del GLB debía ser el punto de anclaje del clip; ahora es el **centro de la
 > tarjeta**. Un modelo hecho para 0.2.x carga igual pero renderiza **desplazado 1.45 unidades**.
 > Ver § [Contrato del modelo GLB](#contrato-del-modelo-glb) y el
 > [CHANGELOG](https://github.com/dotted-labs/ngx-products-3d/blob/main/CHANGELOG.md) para la
 > migración y para el resto de cambios incompatibles.
 >
-> **0.3.0 también cambia el contrato del arte del frente**: la cara frontal se rellena con una
+> **0.3.1 también cambia el contrato del arte del frente**: la cara frontal se rellena con una
 > imagen de ratio **32:45 con canal alfa**, no con una imagen cuadrada. Un asset pensado para 0.2.x
 > se sigue cargando y renderizando, pero sale **estirado** y la lib avisa por consola en dev. Ver
 > § [Contrato del asset frontal](#contrato-del-asset-frontal).
