@@ -52,33 +52,27 @@ jobs:
     needs: check-version-and-release
     if: needs.check-version-and-release.outputs.changed == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write            # ← nuevo: permite el intercambio OIDC
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v4
         with:
           version: 10.10.0
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '24'     # ← npm 11 (OIDC requiere >= 11.5.1)
           registry-url: 'https://registry.npmjs.org'
           cache: 'pnpm'
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build library
-        run: pnpm run build:lib
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build:lib
 
       - name: Publish to npm
         run: |
-          # ng-packagr ya copia el README público de la lib (projects/ngx-products-3d/README.md)
-          # a dist; NO sobreescribir con el README de la raíz. Solo añadimos la licencia.
           cp LICENSE dist/ngx-products-3d/
-          cd dist/ngx-products-3d && pnpm publish --access public --no-git-checks
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          cd dist/ngx-products-3d && npm publish --access public
+        # ← sin NODE_AUTH_TOKEN
