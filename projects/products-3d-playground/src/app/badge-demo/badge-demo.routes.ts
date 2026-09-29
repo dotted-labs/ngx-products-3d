@@ -24,7 +24,7 @@ export const badgeDemoRoutes: Routes = [
 				},
 				defaultBaseTextureUrl: '/assets/badge_vitality.png',
 				fontUrl: '/assets/Ballega.otf',
-				baseColor: '#3b0764',
+				// Sin baseColor, igual que 'violet' (spec-04 R4): se ve el default de la lib.
 			}),
 		],
 		component: BadgeDemoComponent,

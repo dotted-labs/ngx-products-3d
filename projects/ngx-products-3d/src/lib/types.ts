@@ -26,7 +26,7 @@ export interface Products3dBadgeTheme {
 	/** Fuente de los textos: typeface JSON de three, `.otf` o `.ttf` (detección por extensión) */
 	fontUrl: string;
 	/**
-	 * Color base global del modelo. Default `BADGE_BASE_COLOR` (`badge.config.ts`, negro).
+	 * Color base global del modelo. Default `BADGE_BASE_COLOR` (`badge.config.ts`, `'#111111'`).
 	 *
 	 * Reparto (spec-03-F4v2 R2), porque no llega igual a todas las piezas:
 	 * - **Frente de la tarjeta**: pinta el quad de fondo opaco de la escena de la RenderTexture,

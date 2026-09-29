@@ -1,23 +1,80 @@
 # Sesión actual
 
-- **Fecha**: 2026-08-06
-- **Spec**: `docs/specs/active/spec-04-typography-band-assets.md` (**activa, T1–T4 cerradas**)
+- **Fecha**: 2026-09-28
+- **Spec**: ninguna activa (`docs/specs/active/` solo con su README). `spec-04` **archivada** en
+  `docs/specs/spec-04-typography-band-assets.md`.
 - **Rol**: leader
 
 ## Estado
 
-`spec-03-F4v2` cerrada y archivada en `docs/specs/spec-03-F4v2-front-design.md` (8/8 features
-`done`, 8 veredictos APPROVED, N3 firmada por Sergio el 2026-08-05). Bitácora en
-`progress/history.md`.
+**`spec-04` cerrada y archivada (2026-09-28).** T1–T7 `done`, 7 veredictos APPROVED, N3 de T6
+firmada por Sergio (excepción firmada: sin log de consola guardado, norma 6). Hotfix 8–11 también
+`done`. Nivel 2 del leader antes de archivar: build ✅ · lint ✅ · test **319/319** ✅ · playground ✅.
 
-**`spec-04` redactada y activada**, con las 7 tareas desglosadas en `feature_list.json`. **T1, T2, T3
-y T4 cerradas (`done`, APPROVED)**; T5–T7 en `pending`.
+**Publicación de la 0.3.0 — decisión pendiente de Sergio** (análisis en
+`progress/review_spec-04-T7.md` §5): `main` ya lleva la 0.3.0 (PR #9) y el run de release falló en
+`npm publish` (E404, probable token). Tag y GitHub Release `v0.3.0` existen sobre `2a2a52f`
+(incompleto). Un merge sin bump **no** vuelve a publicar; **no** relanzar el job fallido (publicaría
+`2a2a52f`). Ramas: `fix/loading-state` (PR #10) → `feature/spec-04-t6-playground` →
+`feature/spec-04-t7-docs` (apiladas).
 
-Baseline heredado: `pnpm build` ✅ · `pnpm ng lint ngx-products-3d` ✅ ·
-`pnpm ng test ngx-products-3d` **160/160** ✅ · `pnpm ng build products-3d-playground` ✅.
-**El implementer debe revalidarlo antes de tocar nada** (§1 de `AGENTS.md`).
+Lo de abajo es el registro de las tareas de esta sesión (ya volcado a `progress/history.md`).
 
-## 🔄 En curso (2026-09-28): hotfix `badge-loading-drop` (feature `id: 11`)
+## ✅ Cerrada (2026-09-28): spec-04-T7 — `badge-typography-docs` (feature `id: 7`)
+
+- **Estado**: **`done`**. Review APPROVED (`progress/review_spec-04-T7.md`); observaciones no
+  bloqueantes 1–3 aplicadas (solo docs/JSDoc, ver § Post-review del informe). build ✅ · lint ✅ ·
+  test **319/319** ✅ · playground ✅. `feature_list.json` id 7 = `done`. Sin commitear.
+  **Última fase de spec-04**: el archivo de la spec lo hace el leader.
+
+- **En curso**: spec-04-T7 — README publicado, README raíz y CHANGELOG 0.3.0 (encargo:
+  `progress/task_spec-04-T7.md`). Rama `feature/spec-04-t7-docs`. Última tarea de spec-04.
+- **Baseline revalidado** (implementer): build ✅ · lint ✅ · test **319/319** ✅.
+- **Estado (implementer)**: implementado, **pendiente de review**. build ✅ · lint ✅ · test
+  **319/319** ✅ · playground ✅ · `dist` README = fuente, `.d.ts` con `'#111111'`. Lib: solo 4
+  líneas de comentario/JSDoc. Sin commitear. Informe: `progress/impl_spec-04-T7.md`. ⚠️ Hallazgo
+  para el leader: tag + GitHub Release `v0.3.0` creados el 2026-09-28 sobre `2a2a52f`, pero el
+  `npm publish` falló (registry en 0.2.1) y un merge sin bump de versión no lo re-dispara.
+- **Plan**:
+  1. README publicado: (a) fuentes JSON/OTF/TTF con `import()` dinámico, (b) textos abajo-izquierda
+     (trampa de la V intacta), (c) contrato de la correa (tileable, alfa, repeat derivado), (d)
+     default `#111111`; coherencia con la sección del hotfix 11.
+  2. README raíz: band.png y fila de fontUrl.
+  3. CHANGELOG 0.3.0 ampliado (breaking `BADGE_BAND.repeat`, fontUrl, defaults, hotfix 8–11) y
+     `:112` corregido en sitio; sin 0.4.0.
+  4. Solo comentarios/JSDoc en la lib («negro» → `#111111`); P25 del runbook del smoke test.
+  5. Barridos de `#000000`/«negro», build/lint/test/playground y comprobación de `dist/`.
+- **Criterios de aceptación aplicables**: los 10 de `feature_list.json` id 7 + las ampliaciones
+  del leader en `progress/task_spec-04-T7.md` (hotfix 8–11 en el CHANGELOG, P25, JSDoc de
+  `types.ts`, solo comentarios en la lib, playground build verde, `.d.ts` y README de `dist/`).
+
+## ✅ Cerrada (2026-09-28): spec-04-T6 — `badge-playground-font-color` (feature `id: 6`)
+
+- **En curso**: spec-04-T6 — Playground: color de texto, temas sin baseColor y N3 (encargo:
+  `progress/task_spec-04-T6.md`). Rama `feature/spec-04-t6-playground`.
+- **Baseline revalidado** (implementer): build ✅ · lint ✅ · test **319/319** ✅.
+- **Paso 0**: `feature_list.json` id 5 = `done` (review T5 ronda 2 APPROVED).
+- **Estado**: **`done`**. Review APPROVED + N3 firmada por Sergio (2026-09-28, «todo ok»; sin log de consola: excepción a la norma 6 firmada por él). id 6 = `done`. build ✅ · lint ✅ ·
+  test **319/319** ✅ · playground build ✅ · playground lint ✅. Lib sin tocar. Commiteada en `feature/spec-04-t6-playground`. P25 y `types.ts:29` → T7 (decisión del leader). Informe (con checklist
+  N3): `progress/impl_spec-04-T6.md`. Sin commitear. Hallazgos fuera de alcance: P25 sigue abierto
+  (`cp` del smoke test con 3 PNG inexistentes) y JSDoc de `types.ts:29` dice «negro» (T7).
+- **Plan**:
+  1. (a) Verificar cero `font.json` vivos fuera de los README (T7) y que el `cp {...}` del smoke test
+     nombra ficheros que existen.
+  2. (b) `textColor` signal + merge en `colors.text` del `theme()` computed, `<input type="color">`,
+     reset al cambiar de tema. Verificar en la lib que `colors.text` llega a los textos.
+  3. (c) Quitar `baseColor` de violet, ember **y del provider de `badge-demo.routes.ts`** (debe ser
+     idéntico a violet); `DemoTheme` sin `baseColor` obligatorio; control inicializado desde
+     `BADGE_BASE_COLOR`; comentario obsoleto actualizado.
+  4. (d) Medir `band.png` (IHDR) antes de citar dimensiones.
+  5. (e) Checklist N3 para Sergio con log de consola guardado. Informe en
+     `progress/impl_spec-04-T6.md`.
+- **Criterios de aceptación aplicables**: los 11 de `feature_list.json` id 6 (font.json repuntado ·
+  color picker de texto en caliente · temas sin baseColor y control con valor · correa band.png sin
+  compresión ni fondo negro · checklist N3 con log · teselado anotado · legibilidad/colisión anotada ·
+  build/lint/test/playground verdes). Los de N3 quedan para Sergio.
+
+## ✅ Cerrada (2026-09-28): hotfix `badge-loading-drop` (feature `id: 11`)
 
 - **Feature**: hotfix-11 — estado de loading + caída desde arriba con todo cargado (encargo:
   `progress/task_loading-state.md`, acordado con Sergio en 3 rondas de preguntas). Fuera de
@@ -152,9 +209,13 @@ detectó el reviewer de T5 comparando índice y disco; lo confirmé yo leyendo l
   constante de la lib **no debe documentar el tamaño de un fichero del playground** — ese dato se
   pudrió en horas, y viajaba en los `.d.ts` publicados de la 0.3.0.
 
-## 🔄 En curso: spec-04-T5 — `badge-band-asset-swap` (feature `id: 5`)
+## ✅ Cerrada: spec-04-T5 — `badge-band-asset-swap` (feature `id: 5`)
 
-- **Estado**: **CHANGES_REQUESTED** → ronda de correcciones en marcha.
+- **Cierre (2026-09-28, leader)**: la ronda 2 del review quedó **APPROVED** el 2026-08-06
+  (`progress/review_spec-04-T5.md` § "Re-review"), y el código entró en `main` con `37b6449`. Solo
+  faltaba el bookkeeping: el implementer de T6 marca id 5 = `done` como paso 0. Lo de abajo queda
+  como registro histórico.
+- **Estado (histórico, ronda 1)**: **CHANGES_REQUESTED** → ronda de correcciones en marcha.
   Veredicto: `progress/review_spec-04-T5.md` · Informe: `progress/impl_spec-04-T5.md`.
   El trabajo del implementer era **correcto y estaba verificado al entregarlo**; lo bloqueó el cambio
   de asset externo y posterior de arriba, más una cita de dimensiones derivada de él.

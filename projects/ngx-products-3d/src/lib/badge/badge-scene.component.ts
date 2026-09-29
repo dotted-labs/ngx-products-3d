@@ -179,8 +179,8 @@ interface BadgeGLTF {
 						<!--
 							SIN binding [color] a propósito: se queda en el blanco por defecto de three.
 							El map de este material es la RenderTexture del frente y el fragment shader
-							multiplica map × color, así que enchufar aquí el baseColor del tema (negro
-							por defecto) pintaría el frente entero de negro. El baseColor llega al
+							multiplica map × color, así que enchufar aquí el baseColor del tema (#111111
+							por defecto) pintaría el frente entero casi de negro. El baseColor llega al
 							frente por dentro de la escena de la RenderTexture, como quad de fondo opaco
 							bajo el arte del tier (spec-03-F4v2 R2); en el metal de clip/clamp entra por
 							el effect de tinte del constructor.
@@ -507,7 +507,7 @@ export class Products3dBadgeScene {
 
 		// Tinte del metal del clip/clamp, reactivo a gltf.value() + theme(). El color lo resuelve
 		// resolveClipColor(): theme.colors.clip (override específico) ?? theme.baseColor ?? el
-		// default de config. Con el default negro SIEMPRE hay color, así que el tinte se aplica
+		// default de config. Con el default (#111111) SIEMPRE hay color, así que el tinte se aplica
 		// siempre y ya NO existe la rama "sin color → material original del GLB": era inalcanzable
 		// (spec-03-F4v2 R2, nota de implementación).
 		// Se CLONA el material 'metal' antes de teñir: el GLB comparte esa instancia entre clip y

@@ -124,7 +124,8 @@ export const BADGE_BAND = {
 	 * `lineWidth` de la meshline. OJO: NO son unidades de mundo. Con `sizeAttenuation` (default 1
 	 * de meshline) el shader suma el offset en espacio de clip, así que el ancho real de la correa
 	 * es `lineWidth * tan(fov/2)` = **0.2217 uds** con `BADGE_CAMERA.fov` = 25 (constante con la
-	 * distancia). De ahí sale el teselado de `repeat`; recalcularlo si se toca este valor.
+	 * distancia). De ahí sale el teselado de la correa, que `bandRepeatFor` recalcula solo a partir
+	 * de este valor: no hay nada que ajustar a mano si se toca.
 	 */
 	lineWidth: 1,
 	/** La correa se dibuja siempre encima; sin test de profundidad para evitar clipping con la tarjeta */
@@ -133,7 +134,7 @@ export const BADGE_BAND = {
 	 * El arte de la correa lleva canal alfa (`band.png`). `MeshLineMaterial` extiende
 	 * `ShaderMaterial` y su shader ya multiplica el alfa del map dentro de `diffuseColor`, así que
 	 * basta con la propiedad estándar: sin ella los píxeles a alfa 0, que llevan RGB (0,0,0),
-	 * pintarían la correa de NEGRO en vez de dejar ver el color plano.
+	 * pintarían la correa de NEGRO en vez de dejar ver lo que haya detrás de ella.
 	 */
 	transparent: true,
 	/**
@@ -572,7 +573,7 @@ export interface BadgeTextSlot {
  * anclas comparten la U (0.08) para que las tres líneas queden a bandera por la izquierda.
  *
  * La z NO va en el slot: es común a los tres y vive en `BADGE_TEXTURE.textLayerZ` (capa por delante
- * del arte del tier). Valores de arranque de la spec; el ajuste fino es visual (T7, N3).
+ * del arte del tier). El ajuste fino de estos valores es visual.
  */
 export const BADGE_TEXT_LAYOUT: BadgeTextSlot[] = [
 	{ field: 'name', anchor: [0.08, 0.16], align: 'left', size: 0.09, height: 0.01, maxWidth: 0.65 },

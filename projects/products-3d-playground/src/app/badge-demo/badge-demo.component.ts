@@ -1,14 +1,41 @@
 import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/core';
 import {
+	BADGE_BASE_COLOR,
+	BADGE_TEXT,
 	Products3dBadge,
 	type BadgeMemberData,
 	type Products3dBadgeTheme,
 } from '@dotted-labs/ngx-products-3d';
+import { Color } from 'three';
 
 type DemoThemeKey = 'violet' | 'ember';
 
-/** Tema demo con `baseColor` obligatorio: el control del formulario arranca desde él */
-type DemoTheme = Products3dBadgeTheme & { baseColor: string };
+/**
+ * Tema demo SIN `baseColor` (spec-04 R4): lo que se ve en pantalla es el default de la lib
+ * (`BADGE_BASE_COLOR`). Omitirlo del tipo convierte en error de compilación que alguien vuelva a
+ * fijarlo en un tema demo. El color base solo lo pone el control del formulario.
+ */
+type DemoTheme = Omit<Products3dBadgeTheme, 'baseColor'>;
+
+/**
+ * `<input type="color">` solo acepta `#rrggbb` en minúsculas: con cualquier otra cosa el navegador
+ * lo sanea a `#000000` sin avisar. El fallback del texto de la lib es un nombre CSS
+ * (`BADGE_TEXT.color` = `'black'`), así que se normaliza con el parser de color de three — el mismo
+ * que acaba aplicando el color al material, de modo que el control enseña lo que se pinta.
+ */
+function toColorInputValue(color: string): string {
+	return `#${new Color(color).getHexString()}`;
+}
+
+/** Valor inicial del control de color base: el default de la lib (ningún tema demo lo fija) */
+function initialBaseColor(): string {
+	return toColorInputValue(BADGE_BASE_COLOR);
+}
+
+/** Valor inicial del control de color de texto: el mismo fallback que aplica la lib a los textos */
+function initialTextColor(theme: DemoTheme): string {
+	return toColorInputValue(theme.colors?.text ?? BADGE_TEXT.color);
+}
 
 // Único arte frontal de la demo: 800 × 1125 px (ratio 32:45 exacto, el de la cara de
 // membresia.glb) y con canal alfa — un tercio de sus píxeles es totalmente transparente,
@@ -31,10 +58,11 @@ const DEMO_THEMES: Record<DemoThemeKey, DemoTheme> = {
 		},
 		defaultBaseTextureUrl: FRONT_ART_URL,
 		fontUrl: '/assets/Ballega.otf',
-		// Sin baseColor explícito el clip/clamp de este tema saldría negro (no define
-		// colors.clip): con él, el metal se tiñe de violeta y el frente enseña ese mismo
-		// color por las zonas transparentes del arte.
-		baseColor: '#3b0764',
+		// Sin baseColor ni colors a propósito (spec-04 R4): este tema enseña los defaults de la
+		// lib. El frente muestra BADGE_BASE_COLOR (#111111) por las zonas transparentes del arte,
+		// el metal de clip/clamp se tiñe con ese mismo color (no hay colors.clip que lo pise,
+		// así que sale casi negro) y los textos salen en BADGE_TEXT.color. Para otro metal:
+		// control «Color base» del formulario, o colors.clip como en ember.
 	},
 	ember: {
 		// Misma correa que violet: band.png es arte blanco sobre alfa (neutro/tintable), la
@@ -46,12 +74,10 @@ const DEMO_THEMES: Record<DemoThemeKey, DemoTheme> = {
 		baseTextures: {},
 		defaultBaseTextureUrl: FRONT_ART_URL,
 		fontUrl: '/assets/Ballega.otf',
-		// baseColor distinto al de violet: alternar temas debe notarse en el frente (color
-		// que asoma por el alpha del arte) aunque el arte sea el mismo fichero.
-		baseColor: '#7c2d12',
-		// colors distintos a propósito: el cambio de tema debe notarse también en
-		// correa (tinte), clip (metal cobrizo) y texto, no solo en las texturas.
-		// colors.clip gana a baseColor en el metal: es el override específico de la lib.
+		// Tampoco fija baseColor (spec-04 R4): el frente enseña el mismo #111111 que violet.
+		// Alternar temas se nota en correa (tinte), clip (metal cobrizo) y texto.
+		// colors.clip gana a baseColor en el metal: es el override específico de la lib, así
+		// que el control «Color base» aquí solo cambia el frente.
 		colors: {
 			band: '#ffe3c2',
 			clip: '#b45309',
@@ -101,6 +127,10 @@ const INITIAL_THEME_KEY: DemoThemeKey = 'violet';
 			<label>
 				Color base
 				<input type="color" [value]="baseColor()" (input)="onBaseColorInput($event)" />
+			</label>
+			<label>
+				Color texto
+				<input type="color" [value]="textColor()" (input)="onTextColorInput($event)" />
 			</label>
 			<label class="debug">
 				<input type="checkbox" [checked]="debug()" (change)="debug.set(!debug())" />
@@ -197,17 +227,28 @@ export class BadgeDemoComponent {
 
 	protected readonly themeKey = signal<DemoThemeKey>(INITIAL_THEME_KEY);
 
-	// Control en caliente del baseColor del tema. Arranca en el del tema inicial y lo sigue
-	// al cambiar de tema (cada tema demo trae el suyo); a partir de ahí manda el formulario.
-	protected readonly baseColor = signal(DEMO_THEMES[INITIAL_THEME_KEY].baseColor);
+	// Control en caliente del baseColor. Ningún tema demo lo fija, así que arranca en el default
+	// de la lib (BADGE_BASE_COLOR) y vuelve a él al cambiar de tema; a partir de ahí manda el
+	// formulario.
+	protected readonly baseColor = signal(initialBaseColor());
 
-	// El baseColor del formulario se superpone al del tema demo: mismo objeto de tema salvo
-	// ese campo. Cambiarlo repinta el fondo del frente (lo que asoma por el alpha del arte) y
-	// el metal de clip/clamp, sin remontar el canvas — es un binding, no un provider.
-	protected readonly theme = computed<Products3dBadgeTheme>(() => ({
-		...DEMO_THEMES[this.themeKey()],
-		baseColor: this.baseColor(),
-	}));
+	// Control en caliente de colors.text. Arranca en el color que la lib pintaría para el tema
+	// inicial (colors.text ?? BADGE_TEXT.color) y lo sigue al cambiar de tema, porque ember trae
+	// el suyo; a partir de ahí manda el formulario.
+	protected readonly textColor = signal(initialTextColor(DEMO_THEMES[INITIAL_THEME_KEY]));
+
+	// baseColor y colors.text del formulario se superponen al tema demo: mismo objeto de tema
+	// salvo esos dos campos (colors se mergea para conservar band/clip de ember). Cambiarlos
+	// repinta el fondo del frente (lo que asoma por el alpha del arte), el metal de clip/clamp
+	// sin colors.clip y los tres textos, sin remontar el canvas: es un binding, no un provider.
+	protected readonly theme = computed<Products3dBadgeTheme>(() => {
+		const demo = DEMO_THEMES[this.themeKey()];
+		return {
+			...demo,
+			baseColor: this.baseColor(),
+			colors: { ...demo.colors, text: this.textColor() },
+		};
+	});
 
 	protected onNameInput(event: Event): void {
 		const name = (event.target as HTMLInputElement).value;
@@ -227,10 +268,15 @@ export class BadgeDemoComponent {
 	protected onThemeChange(event: Event): void {
 		const key = (event.target as HTMLSelectElement).value as DemoThemeKey;
 		this.themeKey.set(key);
-		this.baseColor.set(DEMO_THEMES[key].baseColor);
+		this.baseColor.set(initialBaseColor());
+		this.textColor.set(initialTextColor(DEMO_THEMES[key]));
 	}
 
 	protected onBaseColorInput(event: Event): void {
 		this.baseColor.set((event.target as HTMLInputElement).value);
+	}
+
+	protected onTextColorInput(event: Event): void {
+		this.textColor.set((event.target as HTMLInputElement).value);
 	}
 }
