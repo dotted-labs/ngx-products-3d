@@ -73,7 +73,7 @@ import {
 // ratio»); se fijan ANTES de crear el componente, porque no son signals y no reevalúan por sí solas.
 const textureMock = vi.hoisted(() => ({
 	inputs: [] as (() => string)[],
-	status: 'loading' as 'loading' | 'error',
+	status: 'loading' as 'loading' | 'error' | 'resolved',
 	value: undefined as ResolvedTextureMock | undefined,
 }));
 vi.mock('angular-three-soba/loaders', () => ({
@@ -699,5 +699,95 @@ describe('Products3dBadgeTexture degraded front', () => {
 		expect(internals.baseColor()).toBe(BADGE_BASE_COLOR);
 		expect(warn).toHaveBeenCalledTimes(1);
 		expect(warn.mock.calls[0][0]).toContain('assets/base-gold.webp');
+	});
+});
+
+describe('Products3dBadgeTexture ready (startup gate of the scene)', () => {
+	afterEach(() => {
+		textureMock.status = 'loading';
+		fontLoaderMock.loaded = [];
+		fontLoaderMock.failures.clear();
+		vi.restoreAllMocks();
+	});
+
+	/** Tema con una fuente binaria propia (la caché de typefaces es por URL y de módulo). */
+	function themeWithFont(fontUrl: string): Products3dBadgeTheme {
+		return { ...THEME, fontUrl };
+	}
+
+	/** Cuenta las emisiones del output `ready` del frente. */
+	function countReady(fixture: ComponentFixture<Products3dBadgeTexture>): () => number {
+		let emissions = 0;
+		fixture.componentInstance.ready.subscribe(() => {
+			emissions += 1;
+		});
+		return () => emissions;
+	}
+
+	it('emits ready once when the base texture failed and the binary font failed (bare front)', async () => {
+		vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+		textureMock.status = 'error';
+		fontLoaderMock.failures.add('assets/ready-broken.otf');
+		const fixture = createTextureScene(themeWithFont('assets/ready-broken.otf'));
+		const ready = countReady(fixture);
+		fixture.detectChanges();
+		await fixture.whenStable();
+
+		expect(ready()).toBe(1);
+
+		// Solo la primera vez: un tema nuevo después no vuelve a emitir.
+		fixture.componentRef.setInput('theme', { ...themeWithFont('assets/ready-broken.otf') });
+		fixture.detectChanges();
+		await fixture.whenStable();
+		expect(ready()).toBe(1);
+	});
+
+	it('emits ready only once even when the front goes back to loading and settles again', async () => {
+		vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+		textureMock.status = 'error';
+		fontLoaderMock.failures.add('assets/ready-first.otf');
+		fontLoaderMock.failures.add('assets/ready-second.otf');
+		const fixture = createTextureScene(themeWithFont('assets/ready-first.otf'));
+		const ready = countReady(fixture);
+		fixture.detectChanges();
+		await fixture.whenStable();
+		expect(ready()).toBe(1);
+
+		// Otra fuente: su recurso vuelve a loading (frente NO listo) y después termina en error (frente
+		// listo otra vez). A diferencia del test de arriba, frontReady sí pasa por false → true.
+		fixture.componentRef.setInput('theme', themeWithFont('assets/ready-second.otf'));
+		fixture.detectChanges();
+		const frontReady = (fixture.componentInstance as unknown as { frontReady: () => boolean })
+			.frontReady;
+		expect(frontReady()).toBe(false);
+		await fixture.whenStable();
+
+		expect(frontReady()).toBe(true);
+		expect(fontLoaderMock.loaded).toContain('assets/ready-second.otf');
+		expect(ready()).toBe(1);
+	});
+
+	it('does not emit while the base texture is still loading, even with the font settled', async () => {
+		vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+		fontLoaderMock.failures.add('assets/ready-pending-base.otf');
+		const fixture = createTextureScene(themeWithFont('assets/ready-pending-base.otf'));
+		const ready = countReady(fixture);
+		fixture.detectChanges();
+		await fixture.whenStable();
+
+		expect(ready()).toBe(0);
+	});
+
+	it('waits for the text geometries once the font resolved (no text mesh built yet)', async () => {
+		// Base resuelta y fuente convertida, pero sin ningún <ngts-text-3d> construido (el template es
+		// vacío en test): el frente aún no está listo, los textos aparecerían tarde sobre la tarjeta.
+		textureMock.status = 'resolved';
+		const fixture = createTextureScene(themeWithFont('assets/ready-texts.otf'));
+		const ready = countReady(fixture);
+		fixture.detectChanges();
+		await fixture.whenStable();
+
+		expect(internalsOf(fixture).resolvedFont()).toMatchObject({ familyName: 'Ballega' });
+		expect(ready()).toBe(0);
 	});
 });

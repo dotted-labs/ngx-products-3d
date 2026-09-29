@@ -204,6 +204,27 @@
         "pnpm build / lint / test / build del playground en verde"
       ],
       "status": "done"
+    },
+    {
+      "id": 11,
+      "name": "badge-loading-drop",
+      "title": "Estado de loading y caída desde arriba al tener todo cargado",
+      "spec": "hotfix",
+      "phase": 1,
+      "depends_on": [10],
+      "description": "Hotfix (Sergio, 2026-09-28): en la primera carga la física arranca en cuanto resuelve Rapier y la tarjeta (GLB) aparece tarde, a mitad de oscilación. Se añade un gate de carga en Products3dBadgeScene (Rapier, GLB, texturas, fuente, environment + precompilación de shaders) con física congelada y nada visible; al estar listo, la cadena cae desde fuera del viewport por arriba con física real. Encargo completo en progress/task_loading-state.md.",
+      "acceptance_criteria": [
+        "Nada visible y física congelada hasta que todos los recursos terminan (resuelto o error) y los shaders están precompilados",
+        "Caída con física real desde fuera del viewport, pose casi vertical con offset lateral configurable",
+        "Recurso en error cuenta como terminado; timeout configurable con warn dev",
+        "Solo en el arranque: cambios posteriores de theme/member se aplican en sitio",
+        "prefers-reduced-motion: aparece en reposo sin caída",
+        "Output ready en la escena, re-emitido por Products3dBadge",
+        "Sin allocations nuevas por frame; constantes en badge.config.ts",
+        "Tests nuevos que fallan con el código actual",
+        "pnpm build / lint / test / build del playground en verde"
+      ],
+      "status": "done"
     }
   ]
 }

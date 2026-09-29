@@ -5,17 +5,19 @@ import {
 	computed,
 	CUSTOM_ELEMENTS_SCHEMA,
 	DestroyRef,
+	DOCUMENT,
 	effect,
 	ElementRef,
 	inject,
 	input,
+	output,
 	PLATFORM_ID,
 	type ResourceRef,
 	signal,
 	viewChild,
 } from '@angular/core';
 import { CatmullRomCurve3, Euler, Quaternion, RepeatWrapping, Vector2, Vector3 } from 'three';
-import type { Camera, Material, Mesh, MeshStandardMaterial } from 'three';
+import type { Camera, Material, Mesh, MeshStandardMaterial, Scene, WebGLRenderer } from 'three';
 import { beforeRender, extend, injectStore, NgtArgs, type NgtThreeEvent } from 'angular-three';
 import {
 	NgtrBallCollider,
@@ -40,6 +42,16 @@ import { localPointToParent, sampleCurveByArcLength } from './badge-band';
 import { BadgeBandMaterial } from './badge-band-material';
 import { cursorFor } from './badge-cursor';
 import { projectPointerToWorld, subtractInto } from './badge-drag';
+import {
+	badgeLoadSettled,
+	badgeStartLayout,
+	nextLoadPhase,
+	pendingBadgeLoads,
+	prefersReducedMotion,
+	type BadgeLoadEvent,
+	type BadgeLoadPhase,
+	type BadgeLoadState,
+} from './badge-loading';
 import { mergeMaterialOptions, tintMetalMaterial } from './badge-material';
 import { lerpTowards, spinCorrectedAngvelY } from './badge-stabilize';
 import { resolveClipColor } from './badge-theme';
@@ -49,7 +61,7 @@ import {
 	BADGE_BAND,
 	BADGE_CARD_MODEL,
 	BADGE_DRAG,
-	BADGE_LAYOUT,
+	BADGE_LOADING,
 	BADGE_LOOP_PRIORITY,
 	BADGE_MAP_ANISOTROPY,
 	BADGE_MATERIAL_DEFAULTS,
@@ -86,6 +98,14 @@ interface BadgeGLTF {
  * con otros elementos 3D futuros, spec-03 Fase 5). En ese caso el `<ngtr-physics>` que la envuelve
  * debe llevar `updatePriority: BADGE_LOOP_PRIORITY.physicsStep`: la correa lee la pose ya
  * interpolada del frame y el paso físico tiene que ir antes que ella (ver `BADGE_LOOP_PRIORITY`).
+ *
+ * Arranque (hotfix badge-loading-drop): mientras cargan el GLB, la textura de la correa y el frente
+ * (textura base + fuente), la tarjeta y la correa no se pintan y la cadena está congelada. Con todo
+ * terminado (resuelto o en error) se precompilan los shaders y se suelta: la cadena cae desde fuera
+ * del viewport por arriba (`badgeDropLayout`), o aparece ya en reposo con
+ * `prefers-reduced-motion: reduce`. Al soltar se emite `ready`, una sola vez. Un tope
+ * (`BADGE_LOADING.timeoutMs`) suelta con lo que haya. Solo ocurre al arrancar: cambios de
+ * `theme`/`member` posteriores se aplican en sitio, sin volver a esconder ni congelar nada.
  */
 @Component({
 	selector: 'products-3d-badge-scene',
@@ -113,11 +133,18 @@ interface BadgeGLTF {
 			la creación de la vista, antes de cualquier effect. El switch dynamic↔kinematicPosition del
 			drag (feature 6) va por la API del body crudo: cardBody.setBodyType(..., true).
 		-->
+		<!--
+			[visible]="released()" en la tarjeta y en la correa: nada del badge se pinta hasta soltarlo
+			(la caída ya parte fuera del frustum, pero la pose de reposo de reduced-motion no). three
+			precompila también lo invisible: compile() recorre la escena con traverse(), no con
+			traverseVisible() (este último solo lo usa para las luces).
+		-->
 		<ngt-object3D
 			#cardBody
 			rigidBody="dynamic"
 			[options]="bodyOptions"
 			[position]="layout.cardPosition"
+			[visible]="released()"
 			(pointerdown)="onPointerDown($event)"
 			(pointerup)="onPointerUp($event)"
 			(pointerover)="onPointerOver($event)"
@@ -182,7 +209,11 @@ interface BadgeGLTF {
 							-->
 							<ngts-render-texture attach="map" [options]="renderTextureOptions">
 								<ng-template renderTextureContent>
-									<products-3d-badge-texture [member]="member()" [theme]="theme()" />
+									<products-3d-badge-texture
+										[member]="member()"
+										[theme]="theme()"
+										(ready)="onFrontReady()"
+									/>
 								</ng-template>
 							</ngts-render-texture>
 						</ngt-mesh-physical-material>
@@ -215,7 +246,7 @@ interface BadgeGLTF {
 			lo multiplica dentro de diffuseColor): sin él, los píxeles a alfa 0 de un PNG con RGB (0,0,0)
 			pintarían la correa de negro. RepeatWrapping se aplica en el effect del constructor.
 		-->
-		<ngt-mesh>
+		<ngt-mesh [visible]="released()">
 			<ngt-mesh-line-geometry #bandGeometry />
 			<ngt-badge-band-material
 				[map]="bandMap()"
@@ -262,7 +293,9 @@ export class Products3dBadgeScene {
 	 */
 	protected readonly cardBodyType = signal<NgtrRigidBodyType>('dynamic');
 
-	protected readonly layout = BADGE_LAYOUT;
+	/** Arranque del badge: una sola vez, al soltar la física con todo cargado (o al vencer el tope) */
+	readonly ready = output<void>();
+
 	protected readonly band = BADGE_BAND;
 	/**
 	 * Posición del grupo visual del GLB dentro del card body (anclaje VISUAL). Es una constante
@@ -340,6 +373,37 @@ export class Products3dBadgeScene {
 	// sola vez para restaurarlo al destruir (no asumir 'auto': el host podría tener otro).
 	private readonly isBrowser = isPlatformBrowser(inject(PLATFORM_ID));
 	private readonly originalCursor = this.isBrowser ? document.body.style.cursor : '';
+
+	/**
+	 * `prefers-reduced-motion: reduce`, leído UNA vez al montar: decide la pose de salida y no se
+	 * reevalúa (la pose solo se aplica al crear los bodies). Guard SSR: en server no hay ventana.
+	 */
+	private readonly reducedMotion =
+		this.isBrowser &&
+		prefersReducedMotion(inject(DOCUMENT).defaultView, BADGE_LOADING.reducedMotionQuery);
+	/**
+	 * Pose de salida de los bodies: fuera del viewport por arriba (`badgeDropLayout`, caen al soltar)
+	 * o, con movimiento reducido, directamente la de reposo (`BADGE_LAYOUT`).
+	 */
+	protected readonly layout = badgeStartLayout(this.reducedMotion);
+
+	/**
+	 * Fase del arranque (`nextLoadPhase`): `loading` → `compiling` → `released`. Hasta `released` la
+	 * cadena está congelada (bodies deshabilitados), tarjeta y correa no se pintan y no hay drag.
+	 */
+	private readonly phase = signal<BadgeLoadPhase>('loading');
+	protected readonly released = computed(() => this.phase() === 'released');
+	/** El frente de la tarjeta (`Products3dBadgeTexture`) ha terminado de cargar (su output `ready`) */
+	private readonly frontReady = signal(false);
+	private readonly loadState = computed<BadgeLoadState>(() => ({
+		gltf: this.gltf.status(),
+		bandTexture: this.bandTexture.status(),
+		frontReady: this.frontReady(),
+	}));
+	/** Todos los recursos del arranque terminados, resueltos o en error (`badgeLoadSettled`) */
+	private readonly loadSettled = computed(() => badgeLoadSettled(this.loadState()));
+	private loadingTimer: ReturnType<typeof setTimeout> | undefined;
+	private destroyed = false;
 
 	// Estado del drag. `dragged` gobierna el path kinemático en beforeRender; los Vector3
 	// se instancian una vez y se reutilizan por frame (cero allocations en el loop de drag).
@@ -523,16 +587,31 @@ export class Products3dBadgeScene {
 			{ data: this.cardJointData },
 		);
 
-		// Entrada a la física (drag + anti-giro): ANTES del paso de Rapier (BADGE_LOOP_PRIORITY), para
-		// que el paso de este mismo frame consuma el objetivo kinemático y la angvel corregida.
+		// Tope de la espera del arranque: al vencer se suelta con lo que haya (warn dev). Un timeout de
+		// un solo disparo, no un loop propio; se limpia al soltar y al destruir. Solo en browser.
+		if (this.isBrowser) {
+			this.loadingTimer = setTimeout(() => this.onLoadingTimeout(), BADGE_LOADING.timeoutMs);
+		}
+		this.destroyRef.onDestroy(() => {
+			this.destroyed = true;
+			clearTimeout(this.loadingTimer);
+		});
+
+		// Entrada a la física: ANTES del paso de Rapier (BADGE_LOOP_PRIORITY), para que el paso de este
+		// mismo frame ya la consuma. Mientras el badge carga es el gate de arranque (congela los bodies
+		// antes de cada paso); una vez suelto, drag + anti-giro.
 		beforeRender(
-			({ camera, pointer }) => {
+			({ camera, pointer, gl, scene }) => {
 				const j1 = this.j1Body().rigidBody();
 				const j2 = this.j2Body().rigidBody();
 				const j3 = this.j3Body().rigidBody();
 				const card = this.cardBody().rigidBody();
 				// Los rigid bodies no existen hasta que el WASM de Rapier resuelve.
 				if (!j1 || !j2 || !j3 || !card) {
+					return;
+				}
+				if (!this.released()) {
+					this.holdUntilLoaded(card, j1, j2, j3, gl, scene, camera);
 					return;
 				}
 				this.applyPointerInput(card, j1, j2, j3, camera, pointer);
@@ -568,7 +647,8 @@ export class Products3dBadgeScene {
 	protected onPointerDown(event: NgtThreeEvent<PointerEvent>): void {
 		const card = this.cardBody().rigidBody();
 		const rigidBodyType = this.physics.rapier()?.RigidBodyType;
-		if (!card || !rigidBodyType) {
+		// Sin drag hasta soltar el badge: la tarjeta aún no se ve y su body está deshabilitado.
+		if (!card || !rigidBodyType || !this.released()) {
 			return;
 		}
 
@@ -585,6 +665,10 @@ export class Products3dBadgeScene {
 
 	/** Suelta el drag: libera la captura y devuelve la tarjeta a cuerpo dinámico (cae y oscila). */
 	protected onPointerUp(event: NgtThreeEvent<PointerEvent>): void {
+		// Durante la carga no hubo pointerdown que atender (ni captura que liberar).
+		if (!this.released()) {
+			return;
+		}
 		const card = this.cardBody().rigidBody();
 		const rigidBodyType = this.physics.rapier()?.RigidBodyType;
 
@@ -599,6 +683,10 @@ export class Products3dBadgeScene {
 
 	/** Puntero entra en la tarjeta: activa el estado hover (cursor 'grab' salvo durante el drag). */
 	protected onPointerOver(event: NgtThreeEvent<PointerEvent>): void {
+		// Una tarjeta invisible (carga en curso) no ofrece cursor de agarre.
+		if (!this.released()) {
+			return;
+		}
 		event.stopPropagation();
 		this.hovered.set(true);
 	}
@@ -607,6 +695,118 @@ export class Products3dBadgeScene {
 	protected onPointerOut(event: NgtThreeEvent<PointerEvent>): void {
 		event.stopPropagation();
 		this.hovered.set(false);
+	}
+
+	/** El frente de la tarjeta terminó de cargar (output `ready` de `Products3dBadgeTexture`). */
+	protected onFrontReady(): void {
+		this.frontReady.set(true);
+	}
+
+	/**
+	 * Gate de arranque, un frame cada vez y ANTES del paso de Rapier: congela la cadena y, cuando
+	 * todos los recursos han terminado, lanza la precompilación de shaders (una sola vez). Congelar
+	 * aquí y no en un effect es a propósito: el effect de NgtrRigidBody que termina de configurar cada
+	 * body (`updateRigidBodyEffect`) corre cuando le toca, pero el paso físico solo corre en el loop,
+	 * y este callback va siempre antes que él. `setEnabled` no lo toca ese effect (el tipo del body
+	 * sí: por eso no se congela con `setBodyType`). Cero allocations: solo llamadas al WASM y
+	 * lecturas de signals.
+	 */
+	private holdUntilLoaded(
+		card: RigidBody,
+		j1: RigidBody,
+		j2: RigidBody,
+		j3: RigidBody,
+		gl: WebGLRenderer,
+		scene: Scene,
+		camera: Camera,
+	): void {
+		this.freeze(card);
+		this.freeze(j1);
+		this.freeze(j2);
+		this.freeze(j3);
+		if (this.phase() === 'loading' && this.loadSettled()) {
+			this.advance('settled');
+			this.precompile(gl, scene, camera);
+		}
+	}
+
+	/**
+	 * Compila los programas de todos los materiales de la escena (también los invisibles, ver el
+	 * template) para que el primer frame de la caída no pague la compilación. `compileAsync` usa
+	 * `KHR_parallel_shader_compile` si existe y resuelve cuando todos están listos (como pronto, en una
+	 * microtarea tras este frame). La escena de la RenderTexture del frente es un portal aparte que no
+	 * cuelga de `scene`: se renderiza a su FBO cada frame desde que monta, así que sus programas se
+	 * compilan en ese render, siempre en un frame anterior a la suelta, con el badge aún oculto.
+	 */
+	private precompile(gl: WebGLRenderer, scene: Scene, camera: Camera): void {
+		gl.compileAsync(scene, camera).then(
+			() => this.advance('compiled'),
+			(error: unknown) => {
+				if (ngDevMode) {
+					console.warn(
+						`[ngx-products-3d] badge: falló la precompilación de shaders (${String(error)}). Se suelta igualmente.`,
+					);
+				}
+				this.advance('compiled');
+			},
+		);
+	}
+
+	/** Aviso dev y suelta con lo que haya si el arranque no ha terminado al vencer el tope. */
+	private onLoadingTimeout(): void {
+		if (this.released()) {
+			return;
+		}
+		if (ngDevMode) {
+			const pending = pendingBadgeLoads(this.loadState());
+			const waiting = pending.length > 0 ? pending.join(', ') : 'precompilación de shaders';
+			console.warn(
+				`[ngx-products-3d] badge: el arranque no terminó en ${BADGE_LOADING.timeoutMs} ms (pendiente: ${waiting}). Se suelta con lo que haya.`,
+			);
+		}
+		this.advance('timeout');
+	}
+
+	/** Aplica una transición del arranque; al llegar a `released`, suelta (una sola vez). */
+	private advance(event: BadgeLoadEvent): void {
+		if (this.destroyed) {
+			return;
+		}
+		const previous = this.phase();
+		const next = nextLoadPhase(previous, event);
+		if (next === previous) {
+			return;
+		}
+		this.phase.set(next);
+		if (next === 'released') {
+			this.release();
+		}
+	}
+
+	/**
+	 * Suelta la cadena: rehabilita los bodies (vuelven a la simulación con la gravedad y los joints
+	 * de siempre) y emite `ready`. Solo se llega aquí una vez: `released` es absorbente.
+	 */
+	private release(): void {
+		clearTimeout(this.loadingTimer);
+		this.thaw(this.j1Body().rigidBody());
+		this.thaw(this.j2Body().rigidBody());
+		this.thaw(this.j3Body().rigidBody());
+		this.thaw(this.cardBody().rigidBody());
+		this.ready.emit();
+	}
+
+	private freeze(body: RigidBody): void {
+		if (body.isEnabled()) {
+			body.setEnabled(false);
+		}
+	}
+
+	private thaw(body: RigidBody | null): void {
+		if (body && !body.isEnabled()) {
+			body.setEnabled(true);
+			body.wakeUp();
+		}
 	}
 
 	/**

@@ -63,7 +63,8 @@ export const BADGE_PHYSICS = {
  * pintar solo), así que las tres son ≤ 0:
  *
  * 1. `input` — drag kinemático y anti-giro: escriben en los bodies ANTES del paso, para que el
- *    paso de este mismo frame ya los consuma (sin un frame de retraso bajo el puntero).
+ *    paso de este mismo frame ya los consuma (sin un frame de retraso bajo el puntero). Mientras el
+ *    badge carga, aquí va en su lugar el gate de arranque, que congela los bodies antes del paso.
  * 2. `physicsStep` — el paso de Rapier (`updatePriority` de `<ngtr-physics>`, modo `follow`): avanza
  *    el mundo y escribe en cada `Object3D` la pose INTERPOLADA que se va a pintar.
  * 3. `band` — la correa, que se construye con esa pose ya interpolada. Si corriera antes del paso
@@ -84,14 +85,36 @@ export const BADGE_DRAG = {
 	unprojectDepth: 0.5,
 } as const;
 
-/** Posiciones iniciales (coordenadas de mundo) de los cuerpos de la cadena y la tarjeta */
-export const BADGE_LAYOUT = {
-	fixedPosition: [0.5, 4, 0] as [number, number, number],
-	j1Position: [0.5, 3, 0] as [number, number, number],
-	j2Position: [0.5, 2, 0] as [number, number, number],
-	j3Position: [0.5, 1, 0] as [number, number, number],
-	cardPosition: [2, 0, 0] as [number, number, number],
-} as const;
+/**
+ * Posiciones (coordenadas de mundo) de los cuerpos de la cadena y la tarjeta. Exportado para que los
+ * `.d.ts` de la lib puedan nombrar el tipo de `BADGE_LAYOUT` y de `badgeDropLayout()`.
+ */
+export interface BadgeLayout {
+	readonly fixedPosition: [number, number, number];
+	readonly j1Position: [number, number, number];
+	readonly j2Position: [number, number, number];
+	readonly j3Position: [number, number, number];
+	readonly cardPosition: [number, number, number];
+}
+
+/**
+ * Pose de REPOSO del badge: la cadena cuelga vertical y tensa del anclaje fijo (un
+ * `BADGE_PHYSICS.segmentLength` entre cuerpos) y la tarjeta cuelga de j3 con el anclaje de su joint
+ * (`BADGE_PHYSICS.cardJointAnchor`, top del clip) justo en j3, así que su centro queda
+ * `cardJointAnchor[1]` por debajo. Con la gravedad es la pose de equilibrio: los joints se cumplen
+ * sin corrección y nada se mueve.
+ *
+ * Es la pose de salida con `prefers-reduced-motion: reduce` (aparece ya colgando, sin caída). Sin
+ * esa preferencia el badge sale de `badgeDropLayout()` (fuera del viewport por arriba) y cae hasta
+ * aquí. El anclaje fijo es el mismo en las dos.
+ */
+export const BADGE_LAYOUT: BadgeLayout = {
+	fixedPosition: [0.5, 4, 0],
+	j1Position: [0.5, 3, 0],
+	j2Position: [0.5, 2, 0],
+	j3Position: [0.5, 1, 0],
+	cardPosition: [0.5, 1 - BADGE_PHYSICS.cardJointAnchor[1], 0],
+};
 
 /** Correa (lanyard) renderizada por frame con meshline (spec-02 Fase 1) */
 export const BADGE_BAND = {
@@ -213,6 +236,120 @@ export const BADGE_CARD_MODEL = {
 	 * modelado frente a los 0.25 de ancho de la ranura.
 	 */
 	bandAttachPoint: [0, 1.479, 0] as [number, number, number],
+	/**
+	 * Caja envolvente (AABB) del modelo ENTERO —`card` ∪ `clip` ∪ `clamp`—, en el sistema LOCAL del
+	 * rigid body de la tarjeta. Leída de `membresia.glb` (accessors POSITION; al `clamp` se le aplica
+	 * antes el transform de su nodo, los otros dos no tienen):
+	 * - `card`  X[-0.8, 0.8]     · Y[-1.125, 1.125] · Z[-0.01, 0.01]
+	 * - `clip`  X[-0.06, 0.06]   · Y[0.917, 1.286]  · Z[-0.09, 0.09]
+	 * - `clamp` X[-0.219, 0.223] · Y[1.143, 1.564]  · Z[-0.057, 0.053]
+	 * Unión ⇒ X[-0.8, 0.8] · Y[-1.125, **1.565**] · Z[-0.09, 0.09] (el top redondeado hacia fuera).
+	 * La consume `badgeDropLayout()` para sacar la tarjeta ENTERA del frustum, no solo su centro.
+	 */
+	bounds: {
+		min: [-0.8, -1.125, -0.09] as [number, number, number],
+		max: [0.8, 1.565, 0.09] as [number, number, number],
+	},
+} as const;
+
+/**
+ * Caída de arranque (hotfix badge-loading-drop): con todo cargado, la cadena y la tarjeta caen desde
+ * fuera del viewport por arriba con física real (gravedad + joints). La pose de salida la deriva
+ * `badgeDropLayout()` a partir de estos valores.
+ */
+export const BADGE_DROP = {
+	/**
+	 * Desplazamiento en X (uds de mundo) de la tarjeta respecto al anclaje fijo en la pose de salida.
+	 * La tarjeta sale casi a plomo, pero este poco de lado hace que llegue con algo de balanceo. 0 =
+	 * caída vertical pura.
+	 */
+	lateralOffset: 0.3,
+	/**
+	 * Holgura (uds de mundo) entre el borde INFERIOR del AABB de la tarjeta y el borde SUPERIOR del
+	 * frustum en la pose de salida: la tarjeta no asoma ni un píxel mientras carga.
+	 */
+	frustumMargin: 0.25,
+	/**
+	 * Holgura extra (uds de mundo) del pliegue de la cadena en la pose de salida. La tarjeta sale POR
+	 * ENCIMA del anclaje fijo (y = 4), así que la cadena parte plegada hacia arriba y sus segmentos
+	 * intermedios (j1, j2) caen dentro del rect X·Y de la tarjeta. Para no nacer interpenetrados con su
+	 * collider (el choque se resolvería con un empujón al soltar) se adelantan en z:
+	 * `cardColliderHalfExtents[2]` + `segmentColliderRadius` + esta holgura.
+	 */
+	chainFoldClearance: 0.05,
+} as const;
+
+/**
+ * Pose de SALIDA de la caída: tarjeta entera por encima del frustum de `BADGE_CAMERA` y cadena
+ * plegada entre el anclaje fijo y el clip. Fn pura, sin estado: se evalúa una vez al montar la escena.
+ *
+ * Criterio escrito (y testeado proyectando las 8 esquinas con una cámara de three):
+ * 1. El AABB entero del modelo (`BADGE_CARD_MODEL.bounds`, clip y clamp incluidos) tiene que quedar
+ *    por encima del borde superior del frustum, con `BADGE_DROP.frustumMargin` de holgura.
+ * 2. La cámara es la de `BADGE_CAMERA` (en `position`, mirando a −Z, `fov` VERTICAL en grados). El
+ *    borde superior del frustum a una profundidad `d` es `camY + d · tan(fov/2)`: crece con la
+ *    distancia, así que manda la esquina MÁS LEJANA de la caja (`z` mínima).
+ * 3. Por tanto `cardY = camY + (camZ − (anclajeZ + bounds.min.z)) · tan(fov/2) + margen − bounds.min.y`.
+ *    Con la config actual: 13.09 · tan(12.5°) ≈ 2.902 ⇒ `cardY` ≈ 2.902 + 0.25 + 1.125 ≈ **4.277**.
+ * 4. j3 = anclaje del joint en la tarjeta (`cardJointAnchor`): el spherical joint nace cumplido.
+ * 5. j1 y j2 se reparten en la cuerda anclaje→j3 (1/3 y 2/3) y se adelantan en z el pliegue de
+ *    `BADGE_DROP.chainFoldClearance`. Cada tramo mide ≈ 0.55 < `segmentLength`: los rope joints solo
+ *    limitan la distancia MÁXIMA, así que nacen cumplidos y la cadena se estira al caer.
+ *
+ * Solo vale para la cámara de la lib: un canvas propio con otra cámara tiene otro frustum (la
+ * tarjeta se oculta igual durante la carga: la escena no la pinta hasta soltarla).
+ */
+export function badgeDropLayout(lateralOffset: number = BADGE_DROP.lateralOffset): BadgeLayout {
+	const [, cameraY, cameraZ] = BADGE_CAMERA.position;
+	const anchor = BADGE_LAYOUT.fixedPosition;
+	const { bounds } = BADGE_CARD_MODEL;
+	const tanHalfFov = Math.tan((BADGE_CAMERA.fov * Math.PI) / 360);
+	const farthestDepth = cameraZ - (anchor[2] + bounds.min[2]);
+	const frustumTop = cameraY + farthestDepth * tanHalfFov;
+	const card: [number, number, number] = [
+		anchor[0] + lateralOffset,
+		frustumTop + BADGE_DROP.frustumMargin - bounds.min[1],
+		anchor[2],
+	];
+	const j3: [number, number, number] = [
+		card[0] + BADGE_PHYSICS.cardJointAnchor[0],
+		card[1] + BADGE_PHYSICS.cardJointAnchor[1],
+		card[2] + BADGE_PHYSICS.cardJointAnchor[2],
+	];
+	const foldZ =
+		BADGE_PHYSICS.cardColliderHalfExtents[2] +
+		BADGE_PHYSICS.segmentColliderRadius +
+		BADGE_DROP.chainFoldClearance;
+	const alongChord = (segment: number): [number, number, number] => {
+		const t = segment / BADGE_BAND.ropeJoints;
+		return [
+			anchor[0] + (j3[0] - anchor[0]) * t,
+			anchor[1] + (j3[1] - anchor[1]) * t,
+			anchor[2] + (j3[2] - anchor[2]) * t + foldZ,
+		];
+	};
+
+	return {
+		fixedPosition: anchor,
+		j1Position: alongChord(1),
+		j2Position: alongChord(2),
+		j3Position: j3,
+		cardPosition: card,
+	};
+}
+
+/**
+ * Estado de carga del badge (hotfix badge-loading-drop). Mientras carga, nada del badge se ve y la
+ * física de la cadena está congelada; con todo listo (o al vencer el tope) se suelta una única vez.
+ */
+export const BADGE_LOADING = {
+	/**
+	 * Tope (ms) de la espera. Si algún recurso sigue sin terminar al vencer, el badge se suelta con lo
+	 * que haya (los fallbacks de siempre: color plano, sin tarjeta, sin textos) y se avisa en dev.
+	 */
+	timeoutMs: 10_000,
+	/** Media query de la preferencia del sistema: con `reduce`, sin caída (aparece en reposo) */
+	reducedMotionQuery: '(prefers-reduced-motion: reduce)',
 } as const;
 
 /**

@@ -6,6 +6,7 @@ import {
 	CUSTOM_ELEMENTS_SCHEMA,
 	inject,
 	input,
+	output,
 	PLATFORM_ID,
 } from '@angular/core';
 import { NgtCanvas } from 'angular-three/dom';
@@ -56,7 +57,11 @@ import { BADGE_CAMERA, BADGE_LIGHTING, BADGE_LOOP_PRIORITY, BADGE_PHYSICS } from
 					</ngts-environment>
 					<ngtr-physics [options]="physicsOptions()">
 						<ng-template>
-							<products-3d-badge-scene [member]="member()" [theme]="resolvedTheme()" />
+							<products-3d-badge-scene
+								[member]="member()"
+								[theme]="resolvedTheme()"
+								(ready)="onSceneReady()"
+							/>
 						</ng-template>
 					</ngtr-physics>
 				</ng-template>
@@ -81,6 +86,12 @@ export class Products3dBadge {
 
 	/** Debug de física (passthrough a NgtrPhysics) */
 	readonly debug = input<boolean>(false);
+
+	/**
+	 * El badge terminó de cargar y se soltó (cae o, con movimiento reducido, aparece en reposo). Una
+	 * sola vez; re-emisión del `ready` de `Products3dBadgeScene`.
+	 */
+	readonly ready = output<void>();
 
 	private readonly themeFromToken = inject(PRODUCTS_3D_BADGE_THEME, { optional: true });
 
@@ -118,4 +129,9 @@ export class Products3dBadge {
 		}
 		return assertValidBadgeTheme(theme);
 	});
+
+	/** Re-emite el `ready` de la escena hacia la app consumidora. */
+	protected onSceneReady(): void {
+		this.ready.emit();
+	}
 }
