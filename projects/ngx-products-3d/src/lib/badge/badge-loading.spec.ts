@@ -13,7 +13,7 @@ import {
 	type BadgeLoadPhase,
 	type BadgeLoadState,
 } from './badge-loading';
-import { BADGE_LAYOUT, BADGE_LOADING, badgeDropLayout } from './badge.config';
+import { BADGE_DROP, BADGE_LAYOUT, BADGE_LOADING, badgeDropLayout } from './badge.config';
 
 /** Estado con TODO terminado con éxito; cada test rompe una sola pieza. */
 const ALL_LOADED: BadgeLoadState = { gltf: 'resolved', bandTexture: 'resolved', frontReady: true };
@@ -171,5 +171,15 @@ describe('badgeStartLayout (reduced motion decision)', () => {
 	it('starts from the drop pose above the viewport otherwise', () => {
 		expect(badgeStartLayout(false)).toEqual(badgeDropLayout());
 		expect(badgeStartLayout(false).cardPosition[1]).toBeGreaterThan(BADGE_LAYOUT.fixedPosition[1]);
+	});
+
+	it('derives the drop pose from the camera it receives; the rest pose ignores it', () => {
+		const camera = { fov: 40, distance: 10 };
+
+		expect(badgeStartLayout(false, camera)).toEqual(
+			badgeDropLayout(BADGE_DROP.lateralOffset, camera),
+		);
+		expect(badgeStartLayout(false, camera)).not.toEqual(badgeDropLayout());
+		expect(badgeStartLayout(true, camera)).toBe(BADGE_LAYOUT);
 	});
 });

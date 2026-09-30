@@ -53,10 +53,12 @@ vi.hoisted(() => {
 
 import { PLATFORM_ID } from '@angular/core';
 import { TestBed, type ComponentFixture } from '@angular/core/testing';
+import { PerspectiveCamera } from 'three';
+import type { NgtState } from 'angular-three';
 import { PRODUCTS_3D_BADGE_THEME } from '../tokens';
 import type { BadgeMemberData, Products3dBadgeTheme } from '../types';
 import { Products3dBadge } from './badge.component';
-import { BADGE_LIGHTING, BADGE_LOOP_PRIORITY, BADGE_PHYSICS } from './badge.config';
+import { BADGE_CAMERA, BADGE_LIGHTING, BADGE_LOOP_PRIORITY, BADGE_PHYSICS } from './badge.config';
 
 interface BadgeInternals {
 	resolvedTheme: () => Products3dBadgeTheme;
@@ -286,6 +288,117 @@ describe('Products3dBadge', () => {
 			(fixture.componentInstance as unknown as { onSceneReady: () => void }).onSceneReady();
 
 			expect(emissions).toBe(1);
+		});
+	});
+
+	describe('camera input (badge-center-camera)', () => {
+		interface CameraInternals {
+			resolvedCamera: () => { fov: number; distance: number };
+			canvasCamera: () => { position: [number, number, number]; fov: number };
+			onCanvasCreated: (state: NgtState) => void;
+		}
+
+		function cameraInternalsOf(fixture: ComponentFixture<Products3dBadge>): CameraInternals {
+			return fixture.componentInstance as unknown as CameraInternals;
+		}
+
+		/** Template REAL del wrapper (los tests no montan el canvas con WebGL). */
+		function wrapperTemplate(): string {
+			const metadata = Products3dBadge as unknown as {
+				decorators?: { args?: { template?: string }[] }[];
+			};
+			return metadata.decorators?.[0]?.args?.[0]?.template ?? '';
+		}
+
+		/** La cámara que crea <ngt-canvas> con las options por defecto del badge. */
+		function createdCanvasCamera(): PerspectiveCamera {
+			const camera = new PerspectiveCamera(BADGE_CAMERA.fov, 16 / 9, 0.1, 1000);
+			camera.position.set(...BADGE_CAMERA.position);
+			camera.updateProjectionMatrix();
+			return camera;
+		}
+
+		afterEach(() => {
+			vi.restoreAllMocks();
+		});
+
+		it('creates the canvas camera from BADGE_CAMERA when no camera is given', () => {
+			const fixture = createBadge({ inputTheme: makeTheme('assets/font.json') });
+
+			expect(cameraInternalsOf(fixture).canvasCamera()).toEqual({ position: [0, 0, 13], fov: 25 });
+			expect(cameraInternalsOf(fixture).canvasCamera()).toEqual(BADGE_CAMERA);
+		});
+
+		it('creates the canvas camera from the camera input: centred, at the given distance', () => {
+			const fixture = createBadge({ inputTheme: makeTheme('assets/font.json') });
+			fixture.componentRef.setInput('camera', { fov: 18, distance: 9 });
+
+			expect(cameraInternalsOf(fixture).canvasCamera()).toEqual({ position: [0, 0, 9], fov: 18 });
+			expect(cameraInternalsOf(fixture).resolvedCamera()).toEqual({ fov: 18, distance: 9 });
+		});
+
+		it('hands the canvas its camera options once: later changes go to the created camera', () => {
+			// Options nuevas harían re-configurarse al canvas entero (gl.setSize incluido) y él no las
+			// aplicaría a la cámara ya creada: el cambio en caliente va por el effect (test de abajo).
+			const fixture = createBadge({ inputTheme: makeTheme('assets/font.json') });
+			const initial = cameraInternalsOf(fixture).canvasCamera();
+
+			fixture.componentRef.setInput('camera', { fov: 18, distance: 9 });
+
+			expect(cameraInternalsOf(fixture).canvasCamera()).toBe(initial);
+			expect(cameraInternalsOf(fixture).resolvedCamera()).toEqual({ fov: 18, distance: 9 });
+		});
+
+		it('falls back to the default camera with a dev warning for invalid values, never NaN', () => {
+			const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+			const fixture = createBadge({ inputTheme: makeTheme('assets/font.json') });
+			fixture.componentRef.setInput('camera', { fov: -10, distance: Number.NaN });
+
+			expect(() => cameraInternalsOf(fixture).canvasCamera()).not.toThrow();
+			expect(cameraInternalsOf(fixture).canvasCamera()).toEqual(BADGE_CAMERA);
+			expect(warn).toHaveBeenCalledTimes(2);
+			for (const [message] of warn.mock.calls) {
+				expect(String(message)).toContain('[ngx-products-3d]');
+			}
+		});
+
+		it('hands the RESOLVED camera to the scene (it derives the band and the drop from it)', () => {
+			const sceneTag = /<products-3d-badge-scene\b[^>]*\/>/.exec(wrapperTemplate())?.[0] ?? '';
+			const canvasTag = /<ngt-canvas\b[^>]*>/.exec(wrapperTemplate())?.[0] ?? '';
+
+			expect(sceneTag).toContain('[camera]="resolvedCamera()"');
+			expect(canvasTag).toContain('[camera]="canvasCamera()"');
+			expect(canvasTag).toContain('(created)="onCanvasCreated($event)"');
+		});
+
+		it('applies a camera change in hot to the camera the canvas already created', () => {
+			// Plataforma server: el template queda vacío (sin WebGL) pero los effects del wrapper corren.
+			const fixture = createBadge({
+				inputTheme: makeTheme('assets/font.json'),
+				platform: 'server',
+			});
+			const camera = createdCanvasCamera();
+			cameraInternalsOf(fixture).onCanvasCreated({ camera } as unknown as NgtState);
+			fixture.detectChanges();
+
+			// Sin input: la cámara creada no cambia (aplicar los mismos valores es idempotente).
+			expect(camera.fov).toBe(BADGE_CAMERA.fov);
+			expect(camera.position.toArray()).toEqual(BADGE_CAMERA.position);
+
+			fixture.componentRef.setInput('camera', { fov: 18, distance: 9 });
+			fixture.detectChanges();
+
+			const expected = new PerspectiveCamera(18, 16 / 9, 0.1, 1000);
+			expect(camera.fov).toBe(18);
+			expect(camera.position.toArray()).toEqual([0, 0, 9]);
+			expect(camera.projectionMatrix.elements).toEqual(expected.projectionMatrix.elements);
+
+			// Y otra vez: cada cambio posterior del input llega a la misma cámara.
+			fixture.componentRef.setInput('camera', { distance: 11 });
+			fixture.detectChanges();
+
+			expect(camera.fov).toBe(BADGE_CAMERA.fov);
+			expect(camera.position.toArray()).toEqual([0, 0, 11]);
 		});
 	});
 

@@ -7,6 +7,55 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 **breaking changes viajan en la versión menor** (`0.2.x` → `0.3.0`), nunca en un patch: un rango
 `^0.2.1` instalaría un patch automáticamente y rompería builds ajenos sin aviso.
 
+## [0.3.2] — 2026-09-30
+
+Badge **centrado** en su contenedor por defecto y **cámara configurable** (`fov` y distancia) para
+agrandar la tarjeta sin agrandar el contenedor. Sin breaking changes: todo lo nuevo es opcional y las
+firmas públicas que cambian lo hacen con parámetros opcionales al final.
+
+### Cambiado
+
+- **El badge cuelga centrado.** `BADGE_LAYOUT` pasa de x = 0.5 a **x = 0** en sus cinco cuerpos
+  (`fixedPosition`, `j1`–`j3` y `cardPosition`), el eje de la cámara: hasta 0.3.1 la tarjeta
+  colgaba desplazada a la derecha del centro del canvas. La pose de salida de la caída
+  (`badgeDropLayout()`) hereda el centrado y **conserva** su desplazamiento lateral
+  (`BADGE_DROP.lateralOffset`, 0.3) respecto al anclaje. Cambio de **valor**, no de tipos: no da
+  error de compilación, pero si tu app compensaba el descentrado (márgenes, alto del contenedor,
+  posición del placeholder de `@defer`), revísalo.
+
+### Añadido
+
+- **Input `camera` en `Products3dBadge`** (opcional), de tipo nuevo **`Products3dBadgeCamera`**:
+  `{ fov?: number; distance?: number }` — `fov` VERTICAL en grados y `distance` de la cámara al
+  plano del badge. Sin input, o por cada campo que falte, se usa la cámara de siempre
+  (`BADGE_CAMERA`: 25°, 13). La cámara sigue centrada en x/y: solo se elige cuánto abre y a qué
+  distancia está. Se puede cambiar **en caliente**: la cámara del canvas y el teselado de la correa
+  se actualizan en sitio, sin remontar nada y **sin repetir la caída**.
+  - Valores inválidos (no finitos, `distance` ≤ 0, `fov` fuera de `[1, 120)`) caen a su default con
+    un aviso dev `[ngx-products-3d]`; nunca lanzan ni dejan `NaN` ni infinitos en la cámara.
+  - Si la combinación dejaría ver el **anclaje superior de la correa** (su extremo cortado), la
+    `distance` se acorta al máximo que lo mantiene fuera del viewport, con aviso dev. Es decir: la
+    cámara no puede alejarse más allá de ese punto (≈ 16.9 con 25°).
+- **Input `camera` en `Products3dBadgeScene`** (opcional, mismo tipo), para canvas propios: la
+  escena **no mueve** la cámara del canvas, pero deriva de ella el teselado de la correa y la pose de
+  salida. Sin él se comporta como en 0.3.1 (deriva de `BADGE_CAMERA`).
+- Constantes `BADGE_CAMERA_DEFAULTS` (`BADGE_CAMERA` en la forma del input) y
+  `BADGE_CAMERA_LIMITS` (`minFov` 1, `maxFov` 120 y `anchorMargin` 0.15: la holgura del anclaje es
+  el medio ancho de la correa, que depende del `fov`, más ese margen).
+- `bandRepeatFor(aspect, fov?)`: segundo parámetro **opcional** con el `fov` de la cámara activa
+  (default `BADGE_CAMERA.fov`, así que las llamadas de 0.3.1 dan lo mismo). El ancho de la correa en
+  mundo es `lineWidth · tan(fov/2)`, así que con otro `fov` cambia el número de teselas.
+- `badgeDropLayout(lateralOffset?, camera?)`: segundo parámetro **opcional** con la cámara activa
+  resuelta (default `BADGE_CAMERA_DEFAULTS`): la pose de salida queda fuera del frustum de esa
+  cámara, no de la de por defecto.
+
+### Cambios de aspecto (sin cambio de API)
+
+- Posición horizontal del badge (ver "Cambiado").
+- Con un `fov` distinto de 25° la correa cambia de **grosor relativo** a la tarjeta (meshline la
+  dibuja con un ancho proporcional a `tan(fov/2)`): con menos `fov` la tarjeta crece y la correa se
+  afina. Para agrandar la tarjeta sin ese efecto, reduce `distance` y deja el `fov`.
+
 ## [0.3.1] — 2026-09-29
 
 > Primera publicación de la línea 0.3: la 0.3.0 no llegó a publicarse en npm. Todo lo que sigue

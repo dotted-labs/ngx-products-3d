@@ -179,6 +179,7 @@ físico + escena del badge.
 | `member` | `BadgeMemberData` | sí | — | Datos del socio renderizados en la tarjeta |
 | `theme` | `Products3dBadgeTheme` | no | token del provider | Tema visual. Ver gotcha abajo |
 | `debug` | `boolean` | no | `false` | Wireframes de colliders/joints de la física |
+| `camera` | `Products3dBadgeCamera` | no | `{ fov: 25, distance: 13 }` (`BADGE_CAMERA`) | `fov` vertical (grados) y distancia de la cámara al badge. Para agrandar la tarjeta sin agrandar el contenedor. Ver § [Cámara](#cámara-tarjeta-más-grande-sin-agrandar-el-contenedor) |
 
 | Output | Tipo | Descripción |
 | --- | --- | --- |
@@ -207,14 +208,67 @@ por arriba** con física real y llegan con un poco de balanceo. En ese momento s
   sitio, sin volver a esconder ni congelar nada, y `(ready)` no se repite.
 - **`prefers-reduced-motion: reduce`**: sin caída; cuando todo ha cargado, el badge aparece
   directamente colgando en su pose de reposo.
-- Pose de reposo: `BADGE_LAYOUT`. Pose de salida: `badgeDropLayout()`, derivada del frustum de
-  `BADGE_CAMERA` para que la tarjeta entera (clip incluido) quede por encima del borde superior con
-  `BADGE_DROP.frustumMargin` de holgura; `BADGE_DROP.lateralOffset` es el desplazamiento lateral que
-  le da el balanceo.
+- Pose de reposo: `BADGE_LAYOUT`, **centrada** en x = 0 (el eje de la cámara). Pose de salida:
+  `badgeDropLayout()`, derivada del frustum de la cámara **activa** (la del input `camera`, o
+  `BADGE_CAMERA` sin él) para que la tarjeta entera (clip incluido) quede por encima del borde
+  superior con `BADGE_DROP.frustumMargin` de holgura; `BADGE_DROP.lateralOffset` es el desplazamiento
+  lateral que le da el balanceo.
 
 ```html
 <products-3d-badge [member]="member()" (ready)="onBadgeReady()" />
 ```
+
+#### Cámara: tarjeta más grande sin agrandar el contenedor
+
+Desde 0.3.2 el badge cuelga **centrado** en su contenedor (hasta 0.3.1 lo hacía desplazado a la
+derecha): si tu layout compensaba ese descentrado, o el alto del contenedor estaba pensado para él,
+revísalo. Lo que ocupa la tarjeta en pantalla lo decide la cámara, que se configura con el input
+opcional `camera`:
+
+```ts
+export interface Products3dBadgeCamera {
+	/** Campo de visión VERTICAL, en grados, en [1, 120). Default 25 */
+	fov?: number;
+	/** Distancia de la cámara al plano del badge, en unidades de mundo (> 0). Default 13 */
+	distance?: number;
+}
+```
+
+```html
+<!-- Tarjeta ≈ 1.4 veces más grande en el mismo contenedor: cámara más cerca -->
+<products-3d-badge [member]="member()" [camera]="{ distance: 9 }" />
+```
+
+- **Menos `distance` o menos `fov` = tarjeta más grande.** Lo que se ve del plano del badge mide
+  `2 · distance · tan(fov/2)` de alto, así que el tamaño de la tarjeta en pantalla es inversamente
+  proporcional a ese valor (13 · tan(12.5°) ≈ 2.88 con la cámara por defecto).
+- **Mejor `distance` que `fov`**: meshline dibuja la correa con un ancho proporcional a
+  `tan(fov/2)`, así que con menos `fov` la tarjeta crece pero la correa se **afina** respecto a ella
+  (a 20°, un 20% más estrecha). Con `distance` la proporción correa/tarjeta no cambia. El teselado de
+  la correa se recalcula solo con el `fov` que sea (`bandRepeatFor(aspect, fov)`): el arte no se
+  estira en ningún caso.
+- **Cada campo es independiente**: el que no pases toma su default (`BADGE_CAMERA_DEFAULTS`). La
+  cámara siempre está en x = 0, y = 0 (no se expone moverla de lado: descentraría el badge).
+- **Valores inválidos** (no numéricos, no finitos, `distance` ≤ 0, o `fov` fuera de `[1, 120)` =
+  `BADGE_CAMERA_LIMITS.minFov` / `maxFov`) caen a su default con un aviso dev `[ngx-products-3d]`.
+  Nunca lanzan ni dejan `NaN` ni infinitos en la cámara (un `fov` positivo pero minúsculo también se
+  rechaza: con él la proyección degenera).
+- **El anclaje de la correa nunca se ve.** La correa cuelga de un punto fijo en y = 4 que tiene que
+  quedar por encima del viewport, o se vería la correa acabar en el aire. Si la cámara pedida lo
+  enseñaría (más lejos o más abierta de la cuenta), la lib **acorta `distance`** hasta el máximo que
+  lo deja fuera, y avisa en dev. La holgura exigida es el medio ancho de la correa (que crece con el
+  `fov`: al inclinarse, la esquina de su extremo sube hasta ahí) más `BADGE_CAMERA_LIMITS.anchorMargin`
+  (0.15): ≈ 0.26 con 25°, ≈ 0.44 con 60°. Con 25°
+  ese máximo es ≈ 16.9: la tarjeta no puede hacerse más de un ~23% más pequeña que la de por
+  defecto. Para una tarjeta más pequeña, reduce el contenedor.
+- **Rango razonable**: `fov` entre 10° y 60°, y una cámara que deje caber la tarjeta en reposo, que
+  ocupa de y ≈ −1.41 (borde inferior) a y ≈ 1.28 (top del clamp): `distance · tan(fov/2)` ≳ 1.5 (con
+  25°, `distance` ≳ 6.8). En un contenedor más alto que ancho cuenta también el ancho:
+  `distance · tan(fov/2) · (ancho / alto del contenedor)` ≳ 0.8, el medio ancho de la tarjeta. Por
+  debajo la tarjeta se sale del encuadre; la lib no lo impide.
+- **En caliente**: cambiar `camera` después de montar actualiza la cámara del canvas y el teselado
+  de la correa en sitio, sin remontar nada y **sin repetir la caída** (la pose de salida se calcula
+  una sola vez, al arrancar).
 
 ### `BadgeMemberData`
 
@@ -296,11 +350,13 @@ consumidora aporta los suyos:
     real (ancho/alto) de la textura ya cargada con `bandRepeatFor(aspect)`:
     `teselas = longitud de la correa / (aspecto × ancho de la correa)`, con longitud =
     `BADGE_BAND.ropeJoints × BADGE_PHYSICS.segmentLength` (3 uds) y ancho =
-    `BADGE_BAND.lineWidth × tan(BADGE_CAMERA.fov / 2)` (≈ 0.2217 uds). Así el arte nunca se estira ni
-    se comprime. Con la config por defecto, un aspecto 4:1 da ≈ 3.38 teselas y uno 10:1, ≈ 1.35.
-  - **Un arte muy alargado da `repeat` < 1** (menos de una tesela): a partir de un aspecto de
-    ≈ 13.5:1 no cabe entero en la correa y se corta por el extremo. La solución es una tesela más
-    corta en el asset, no configuración.
+    `BADGE_BAND.lineWidth × tan(fov / 2)` con el `fov` de la cámara activa (≈ 0.2217 uds con el de
+    por defecto, 25°). Así el arte nunca se estira ni se comprime. Con la cámara por defecto, un
+    aspecto 4:1 da ≈ 3.38 teselas y uno 10:1, ≈ 1.35.
+  - **Un arte muy alargado da `repeat` < 1** (menos de una tesela): con la cámara por defecto, a
+    partir de un aspecto de ≈ 13.5:1 no cabe entero en la correa y se corta por el extremo (con más
+    `fov` el umbral baja, con menos sube). La solución es una tesela más corta en el asset, no
+    configuración.
   - **Alfa recomendada** (PNG/WebP): el material de la correa declara `transparent`, así que las
     zonas transparentes del arte no se pintan y dejan ver lo que haya detrás. Sin alfa la correa es
     opaca en toda su superficie. `colors.band` tiñe el arte (se multiplica con él).
@@ -445,7 +501,7 @@ cumplir exactamente:
     (`BADGE_PHYSICS.cardJointAnchor`).
   - **Extremo visual de la correa**: el centro de la **ranura superior del `clamp`**, en
     **y ≈ 1.479** (ranura pasante Y`[1.458, 1.500]`, ≈ 0.25 de ancho, más que los 0.2217 de la
-    correa). Ahí termina la correa, que se calcula cada frame con la pose renderizada de la
+    correa con el `fov` por defecto). Ahí termina la correa, que se calcula cada frame con la pose renderizada de la
     tarjeta (`BADGE_CARD_MODEL.bandAttachPoint`).
   - Los dos valores por defecto asumen este contrato. Si tu `clip` o tu `clamp` están a otra
     altura, ajusta la constante que corresponda.
@@ -483,6 +539,7 @@ Si quieres componer el badge con otros elementos 3D, la lib exporta la escena f�
 | `member` | `BadgeMemberData` | sí |
 | `theme` | `Products3dBadgeTheme` | sí |
 | `debug` | `boolean` | no — reservado; en canvas propio el debug de física se activa en las `[options]` de `<ngtr-physics>` |
+| `camera` | `Products3dBadgeCamera` | no — `fov` y distancia de **tu** cámara; ver abajo |
 
 | Output de `Products3dBadgeScene` | Tipo | Descripción |
 | --- | --- | --- |
@@ -493,8 +550,13 @@ escena**, así que también funciona en un canvas propio. No pausa el mundo de R
 `<ngtr-physics>`): deshabilita solo los bodies del badge, así que no congela otros cuerpos que
 compartan el mundo. Dos cosas a tener en cuenta:
 
-- La pose de salida se deriva del frustum de `BADGE_CAMERA`. Con otra cámara la tarjeta puede
-  asomar en la pose de salida, pero no se ve: la escena no la pinta hasta soltarla.
+- La pose de salida y el teselado de la correa se derivan de la cámara que le pases por `camera`
+  (sin input, de `BADGE_CAMERA`). La escena **no mueve** la cámara de tu canvas: si usas otra,
+  créala centrada en x = 0, y = 0 a `distance` del plano z = 0 y pásale a la escena los mismos
+  `fov` y `distance`. Si no coinciden, la correa puede salir estirada y la tarjeta asomar en la pose
+  de salida (no se ve: la escena no la pinta hasta soltarla). La validación y el acotado de `distance`
+  del § [Cámara](#cámara-tarjeta-más-grande-sin-agrandar-el-contenedor) se aplican igual, pero solo a
+  lo que deriva la escena: tu cámara la gobiernas tú.
 - Precompila con la iluminación y el environment que haya en la escena en ese momento: monta tus
   luces y tu `<ngts-environment>` junto al canvas, no después del badge.
 

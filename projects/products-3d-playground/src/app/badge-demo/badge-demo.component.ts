@@ -1,9 +1,11 @@
 import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/core';
 import {
 	BADGE_BASE_COLOR,
+	BADGE_CAMERA_DEFAULTS,
 	BADGE_TEXT,
 	Products3dBadge,
 	type BadgeMemberData,
+	type Products3dBadgeCamera,
 	type Products3dBadgeTheme,
 } from '@dotted-labs/ngx-products-3d';
 import { Color } from 'three';
@@ -88,12 +90,28 @@ const DEMO_THEMES: Record<DemoThemeKey, DemoTheme> = {
 
 const INITIAL_THEME_KEY: DemoThemeKey = 'violet';
 
+/**
+ * Rangos de los sliders de cámara (demo, no config de la lib). La distancia llega a propósito más
+ * allá del máximo que acepta la lib con el fov por defecto (≈ 16.9 a 25°): al pasarlo, la lib acorta
+ * la distancia y avisa en consola (el anclaje de la correa no llega a verse). El fov tampoco se
+ * limita a lo "bonito": la N3 mira también los extremos.
+ */
+const CAMERA_CONTROLS = {
+	fov: { min: 10, max: 60, step: 1 },
+	distance: { min: 5, max: 22, step: 0.5 },
+} as const;
+
 @Component({
 	selector: 'app-badge-demo',
 	imports: [Products3dBadge],
 	template: `
 		@defer (on viewport) {
-			<products-3d-badge [member]="member()" [theme]="theme()" [debug]="debug()" />
+			<products-3d-badge
+				[member]="member()"
+				[theme]="theme()"
+				[camera]="camera()"
+				[debug]="debug()"
+			/>
 		} @placeholder {
 			<div class="badge-placeholder">Cargando badge…</div>
 		}
@@ -132,6 +150,29 @@ const INITIAL_THEME_KEY: DemoThemeKey = 'violet';
 				Color texto
 				<input type="color" [value]="textColor()" (input)="onTextColorInput($event)" />
 			</label>
+			<label>
+				Cámara fov: {{ cameraFov() }}°
+				<input
+					type="range"
+					[min]="cameraControls.fov.min"
+					[max]="cameraControls.fov.max"
+					[step]="cameraControls.fov.step"
+					[value]="cameraFov()"
+					(input)="onCameraFovInput($event)"
+				/>
+			</label>
+			<label>
+				Cámara distancia: {{ cameraDistance() }}
+				<input
+					type="range"
+					[min]="cameraControls.distance.min"
+					[max]="cameraControls.distance.max"
+					[step]="cameraControls.distance.step"
+					[value]="cameraDistance()"
+					(input)="onCameraDistanceInput($event)"
+				/>
+			</label>
+			<button type="button" (click)="onCameraReset()">Cámara por defecto</button>
 			<label class="debug">
 				<input type="checkbox" [checked]="debug()" (change)="debug.set(!debug())" />
 				debug física
@@ -194,6 +235,15 @@ const INITIAL_THEME_KEY: DemoThemeKey = 'violet';
 			padding: 0.125rem;
 		}
 
+		.controls button {
+			padding: 0.375rem 0.75rem;
+			border: 1px solid #d1d5db;
+			border-radius: 0.375rem;
+			background: #fff;
+			font: inherit;
+			cursor: pointer;
+		}
+
 		.controls .debug {
 			display: flex;
 			align-items: center;
@@ -250,6 +300,18 @@ export class BadgeDemoComponent {
 		};
 	});
 
+	protected readonly cameraControls = CAMERA_CONTROLS;
+
+	// Controles en caliente de la cámara (input camera de la lib). Arrancan en la cámara por defecto
+	// de la lib (BADGE_CAMERA_DEFAULTS): mismo patrón signal + computed que los colores. Cambiarlos
+	// aplica la cámara al canvas existente, sin remontarlo y sin repetir la caída.
+	protected readonly cameraFov = signal<number>(BADGE_CAMERA_DEFAULTS.fov);
+	protected readonly cameraDistance = signal<number>(BADGE_CAMERA_DEFAULTS.distance);
+	protected readonly camera = computed<Products3dBadgeCamera>(() => ({
+		fov: this.cameraFov(),
+		distance: this.cameraDistance(),
+	}));
+
 	protected onNameInput(event: Event): void {
 		const name = (event.target as HTMLInputElement).value;
 		this.member.update((member) => ({ ...member, name }));
@@ -278,5 +340,18 @@ export class BadgeDemoComponent {
 
 	protected onTextColorInput(event: Event): void {
 		this.textColor.set((event.target as HTMLInputElement).value);
+	}
+
+	protected onCameraFovInput(event: Event): void {
+		this.cameraFov.set((event.target as HTMLInputElement).valueAsNumber);
+	}
+
+	protected onCameraDistanceInput(event: Event): void {
+		this.cameraDistance.set((event.target as HTMLInputElement).valueAsNumber);
+	}
+
+	protected onCameraReset(): void {
+		this.cameraFov.set(BADGE_CAMERA_DEFAULTS.fov);
+		this.cameraDistance.set(BADGE_CAMERA_DEFAULTS.distance);
 	}
 }
