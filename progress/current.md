@@ -1,6 +1,12 @@
 # Sesión actual
 
-## ▶ En curso (2026-09-30): feature `id: 12` — `badge-center-camera` (0.3.2)
+## ✅ Cerrada (2026-09-30): feature `id: 12` — `badge-center-camera` (0.3.2)
+
+- **Cierre**: Sergio, literal en el chat: «marca la feature 12 como ok» ⇒ N3 firmada por él, sin log
+  de consola guardado (excepción a la norma 6 firmada por él, como en T6). id 12 = `done` (lo marca
+  el implementer). PR [#13](https://github.com/dotted-labs/ngx-products-3d/pull/13) abierta contra
+  `main`; **mergear = publicar 0.3.2** (GO de Sergio). Decisión de producto sobre el grosor de la
+  correa con el `fov`: sin tomar, no bloquea.
 
 - **Encargo**: `progress/task_center-scene.md`. Rama `feat/center-scene` (base `main` `dc8aed4`).
 - **Pedido de Sergio**: centrar la escena. Alcance elegido por él: «Centrar + cámara configurable»
