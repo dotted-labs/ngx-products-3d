@@ -86,6 +86,7 @@ import {
 	BADGE_BASE_COLOR,
 	BADGE_CAMERA,
 	BADGE_CARD_MODEL,
+	BADGE_DROP,
 	BADGE_LAYOUT,
 	BADGE_LOADING,
 	BADGE_LOOP_PRIORITY,
@@ -147,7 +148,7 @@ vi.mock('angular-three-soba/loaders', () => ({
 interface SceneInternals {
 	cardBodyType: () => string;
 	dragged: () => boolean;
-	layout: typeof BADGE_LAYOUT;
+	layout: () => typeof BADGE_LAYOUT;
 	band: typeof BADGE_BAND;
 	cardModelPosition: typeof BADGE_CARD_MODEL.groupPosition;
 	gltf: { value: () => unknown };
@@ -489,8 +490,8 @@ describe('Products3dBadgeScene', () => {
 		// jsdom no tiene matchMedia ⇒ sin preferencia de movimiento reducido ⇒ caída.
 		const fixture = createScene();
 
-		expect(internalsOf(fixture).layout).toEqual(badgeDropLayout());
-		expect(internalsOf(fixture).layout.cardPosition[1]).toBeGreaterThan(
+		expect(internalsOf(fixture).layout()).toEqual(badgeDropLayout());
+		expect(internalsOf(fixture).layout().cardPosition[1]).toBeGreaterThan(
 			BADGE_LAYOUT.fixedPosition[1],
 		);
 	});
@@ -503,7 +504,7 @@ describe('Products3dBadgeScene', () => {
 		try {
 			const fixture = createScene();
 
-			expect(internalsOf(fixture).layout).toBe(BADGE_LAYOUT);
+			expect(internalsOf(fixture).layout()).toBe(BADGE_LAYOUT);
 			expect(matchMedia).toHaveBeenCalledWith(BADGE_LOADING.reducedMotionQuery);
 		} finally {
 			delete (window as { matchMedia?: unknown }).matchMedia;
@@ -1428,6 +1429,94 @@ describe('Products3dBadgeScene', () => {
 			expect(cardTag).toContain('[visible]="released()"');
 			expect(bandTag).toContain('[visible]="released()"');
 			expect(frontTag).toContain('(ready)="onFrontReady()"');
+		});
+	});
+
+	describe('camera input (badge-center-camera)', () => {
+		/** Una cámara que abre MÁS que la de por defecto (ve más arriba) y otra que abre menos. */
+		const WIDER = { fov: 40, distance: 10 };
+		const NARROWER = { fov: 15, distance: 13 };
+
+		afterEach(() => {
+			vi.restoreAllMocks();
+		});
+
+		it('derives the drop pose from the camera input, not from BADGE_CAMERA', () => {
+			const fixture = createScene();
+			fixture.componentRef.setInput('camera', WIDER);
+
+			const layout = internalsOf(fixture).layout();
+
+			expect(layout).toEqual(badgeDropLayout(BADGE_DROP.lateralOffset, WIDER));
+			expect(layout.cardPosition[1]).toBeGreaterThan(badgeDropLayout().cardPosition[1]);
+		});
+
+		it('keeps the default drop pose when no camera is given (canvas of its own, as in 0.3.1)', () => {
+			const fixture = createScene();
+
+			expect(internalsOf(fixture).layout()).toEqual(badgeDropLayout());
+		});
+
+		it('tiles the band with the fov of the camera input (a narrower band, more tiles)', () => {
+			textureMock.data = { image: { width: 512, height: 128 } };
+			const fixture = createScene();
+			fixture.componentRef.setInput('camera', NARROWER);
+
+			expect(internalsOf(fixture).bandRepeat()).toEqual(bandRepeatFor(4, NARROWER.fov));
+			expect(internalsOf(fixture).bandRepeat()).not.toEqual(bandRepeatFor(4));
+		});
+
+		it('falls back to the default camera with a dev warning for an invalid camera input', () => {
+			const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+			textureMock.data = { image: { width: 512, height: 128 } };
+			const fixture = createScene();
+			fixture.componentRef.setInput('camera', { fov: Number.NaN, distance: 0 });
+
+			expect(internalsOf(fixture).bandRepeat()).toEqual(bandRepeatFor(4));
+			expect(internalsOf(fixture).layout()).toEqual(badgeDropLayout());
+			expect(warn).toHaveBeenCalled();
+			expect(String(warn.mock.calls[0][0])).toContain('[ngx-products-3d]');
+		});
+
+		it('applies a camera change in hot: retiles the band in place, without repeating the drop', async () => {
+			gltfMock.data = makeGltfData();
+			textureMock.data = { image: { width: 512, height: 128 } };
+			const fixture = createScene();
+			fixture.componentRef.setInput('camera', WIDER);
+			const bodies = fakeBodies();
+			rigScene(fixture, bodies);
+			let emissions = 0;
+			fixture.componentInstance.ready.subscribe(() => {
+				emissions += 1;
+			});
+			const startLayout = internalsOf(fixture).layout();
+			await releaseScene(fixture);
+			expect(emissions).toBe(1);
+			const freezes = () =>
+				(['j1', 'j2', 'j3', 'card'] as const)
+					.flatMap((name) => bodies[name].raw?.setEnabled.mock.calls ?? [])
+					.filter((call) => call[0] === false).length;
+			const freezesAtRelease = freezes();
+
+			fixture.componentRef.setInput('camera', NARROWER);
+			fixture.detectChanges();
+			runFrame();
+			runFrame();
+			await flushMicrotasks();
+
+			// La correa se re-tesela con el fov nuevo...
+			expect(internalsOf(fixture).bandRepeat()).toEqual(bandRepeatFor(4, NARROWER.fov));
+			// ...pero la pose de salida es la MISMA instancia (no se re-derivó: no hay caída nueva),
+			// y el badge sigue suelto, sin congelar ni un segundo ready.
+			expect(internalsOf(fixture).layout()).toBe(startLayout);
+			expect(internalsOf(fixture).layout()).toEqual(
+				badgeDropLayout(BADGE_DROP.lateralOffset, WIDER),
+			);
+			expect((fixture.componentInstance as unknown as { released: () => boolean }).released()).toBe(
+				true,
+			);
+			expect(freezes()).toBe(freezesAtRelease);
+			expect(emissions).toBe(1);
 		});
 	});
 });

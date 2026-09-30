@@ -1,9 +1,13 @@
 import { PerspectiveCamera, Vector3 } from 'three';
+import type { Products3dBadgeCamera } from '../types';
+import { badgeAnchorClearance, maxBadgeCameraDistance } from './badge-camera';
 import {
 	badgeDropLayout,
 	bandRepeatFor,
 	BADGE_BAND,
 	BADGE_CAMERA,
+	BADGE_CAMERA_DEFAULTS,
+	BADGE_CAMERA_LIMITS,
 	BADGE_CARD_MODEL,
 	BADGE_DROP,
 	BADGE_FRONT_FACE,
@@ -280,6 +284,60 @@ describe('bandRepeatFor', () => {
 	it('keeps BADGE_BAND.referenceTextureAspect at the 4:1 of the reference artwork', () => {
 		expect(BADGE_BAND.referenceTextureAspect).toBe(1024 / 256);
 	});
+
+	describe('with the ACTIVE camera fov (badge-center-camera)', () => {
+		it('defaults the fov to BADGE_CAMERA.fov (same tiling as before the camera input)', () => {
+			expect(bandRepeatFor(4)).toEqual(bandRepeatFor(4, BADGE_CAMERA.fov));
+			expect(bandRepeatFor(4, 25)[0]).toBeCloseTo(HAND_DERIVED_REFERENCE_REPEAT_X, 3);
+		});
+
+		it('derives the band width from the fov it receives, not from the constant', () => {
+			// Ancho en mundo = lineWidth * tan(fov/2), escrito a mano para 15° (ancla independiente de
+			// la fn). Con 15° la correa es más estrecha ⇒ cada tesela más corta ⇒ MÁS repeticiones.
+			const narrowWidth = BADGE_BAND.lineWidth * Math.tan((15 * Math.PI) / 360);
+			const bandLength = BADGE_BAND.ropeJoints * BADGE_PHYSICS.segmentLength;
+
+			expect(bandRepeatFor(4, 15)[0]).toBeCloseTo(-(bandLength / (4 * narrowWidth)), 12);
+			expect(bandRepeatFor(4, 15)[0]).toBeCloseTo(-5.697, 3);
+			expect(Math.abs(bandRepeatFor(4, 15)[0])).toBeGreaterThan(Math.abs(bandRepeatFor(4)[0]));
+			expect(Math.abs(bandRepeatFor(4, 40)[0])).toBeLessThan(Math.abs(bandRepeatFor(4)[0]));
+		});
+
+		it('falls back to BADGE_CAMERA.fov for an unusable fov, never NaN', () => {
+			for (const fov of [
+				0,
+				-25,
+				Number.NaN,
+				Number.POSITIVE_INFINITY,
+				BADGE_CAMERA_LIMITS.maxFov,
+				180,
+			]) {
+				expect(bandRepeatFor(4, fov)).toEqual(bandRepeatFor(4));
+			}
+		});
+
+		it('also falls back for a positive but degenerate fov (below minFov), never Infinity', () => {
+			// Sin cota inferior, tan(fov/2) → 0 y el teselado salía −Infinity (review ronda 1).
+			for (const fov of [
+				Number.MIN_VALUE,
+				1e-310,
+				1e-6,
+				BADGE_CAMERA_LIMITS.minFov - 1e-9,
+			]) {
+				expect(bandRepeatFor(4, fov)).toEqual(bandRepeatFor(4));
+				expect(Number.isFinite(bandRepeatFor(4, fov)[0])).toBe(true);
+			}
+			// El mínimo mismo es válido (incluido): no cae al default.
+			expect(bandRepeatFor(4, BADGE_CAMERA_LIMITS.minFov)).not.toEqual(bandRepeatFor(4));
+			expect(Number.isFinite(bandRepeatFor(4, BADGE_CAMERA_LIMITS.minFov)[0])).toBe(true);
+		});
+
+		it('keeps the tiling finite for a positive but degenerate aspect (reference aspect)', () => {
+			for (const aspect of [Number.MIN_VALUE, 1e-310]) {
+				expect(bandRepeatFor(aspect)).toEqual(bandRepeatFor(BADGE_BAND.referenceTextureAspect));
+			}
+		});
+	});
 });
 
 /**
@@ -360,6 +418,17 @@ describe('BADGE_BAND.endCapTolerance (band end-cap detection in the vertex shade
 
 		expect(BADGE_BAND.endCapTolerance).toBeLessThanOrEqual(segment / halfHeight / 100);
 	});
+
+	it('stays 100 times below a band segment with the widest view any configured camera gets', () => {
+		// La vista más abierta que acepta el badge deja el anclaje justo en su holgura (medio ancho de
+		// la correa + anchorMargin). Cota superior, sin el medio ancho: anclajeY − anchorMargin − camY.
+		const segment =
+			(BADGE_BAND.ropeJoints * BADGE_PHYSICS.segmentLength) / BADGE_PHYSICS.curvePoints;
+		const [, anchorY] = BADGE_LAYOUT.fixedPosition;
+		const widestHalfHeight = anchorY - BADGE_CAMERA_LIMITS.anchorMargin - BADGE_CAMERA.position[1];
+
+		expect(BADGE_BAND.endCapTolerance).toBeLessThanOrEqual(segment / widestHalfHeight / 100);
+	});
 });
 
 type Tuple3 = readonly [number, number, number];
@@ -392,6 +461,61 @@ describe('BADGE_LAYOUT (rest pose, the reduced-motion start)', () => {
 	it('no longer places the card sideways (the old [2, 0, 0] made it swing on every load)', () => {
 		expect(BADGE_LAYOUT.cardPosition[0]).toBe(BADGE_LAYOUT.fixedPosition[0]);
 		expect(BADGE_LAYOUT.cardPosition).not.toEqual([2, 0, 0]);
+	});
+
+	it('hangs every body centred on x = 0, the camera axis (no x = 0.5 left from 0.3.1)', () => {
+		const { fixedPosition, j1Position, j2Position, j3Position, cardPosition } = BADGE_LAYOUT;
+
+		for (const body of [fixedPosition, j1Position, j2Position, j3Position, cardPosition]) {
+			expect(body[0]).toBe(0);
+			expect(body[0]).toBe(BADGE_CAMERA.position[0]);
+		}
+	});
+
+	it('shows the resting card centred on screen with the default camera', () => {
+		// Proyección real: el centro de la tarjeta cae en el centro horizontal del viewport.
+		const camera = new PerspectiveCamera(BADGE_CAMERA.fov, 16 / 9, 0.1, 100);
+		camera.position.set(...BADGE_CAMERA.position);
+		camera.updateMatrixWorld();
+
+		expect(new Vector3(...BADGE_LAYOUT.cardPosition).project(camera).x).toBeCloseTo(0, 12);
+	});
+
+	it('keeps the fixed anchor (the cut end of the band) above the default viewport', () => {
+		const camera = new PerspectiveCamera(BADGE_CAMERA.fov, 1, 0.1, 100);
+		camera.position.set(...BADGE_CAMERA.position);
+		camera.updateMatrixWorld();
+
+		expect(new Vector3(...BADGE_LAYOUT.fixedPosition).project(camera).y).toBeGreaterThan(1);
+	});
+});
+
+describe('BADGE_CAMERA_DEFAULTS / BADGE_CAMERA_LIMITS', () => {
+	it('mirrors BADGE_CAMERA in the shape of the camera input', () => {
+		expect(BADGE_CAMERA_DEFAULTS).toEqual({ fov: 25, distance: 13 });
+		expect(BADGE_CAMERA_DEFAULTS.fov).toBe(BADGE_CAMERA.fov);
+		expect(BADGE_CAMERA_DEFAULTS.distance).toBe(BADGE_CAMERA.position[2]);
+	});
+
+	it('accepts the default camera itself (it does not show the band anchor)', () => {
+		expect(BADGE_CAMERA_DEFAULTS.fov).toBeLessThan(BADGE_CAMERA_LIMITS.maxFov);
+		expect(BADGE_CAMERA_DEFAULTS.distance).toBeLessThan(
+			maxBadgeCameraDistance(BADGE_CAMERA_DEFAULTS.fov),
+		);
+	});
+
+	it('leaves room above the camera for the anchor clearance, even at the widest fov', () => {
+		// La holgura crece con el fov (medio ancho de la correa): la peor es justo por debajo de maxFov.
+		expect(BADGE_CAMERA_LIMITS.anchorMargin).toBeGreaterThan(0);
+		expect(
+			BADGE_LAYOUT.fixedPosition[1] - badgeAnchorClearance(BADGE_CAMERA_LIMITS.maxFov),
+		).toBeGreaterThan(BADGE_CAMERA.position[1]);
+	});
+
+	it('bounds the fov on both sides: a positive minimum and a range that contains the default', () => {
+		expect(BADGE_CAMERA_LIMITS.minFov).toBeGreaterThan(0);
+		expect(BADGE_CAMERA_LIMITS.minFov).toBeLessThanOrEqual(BADGE_CAMERA_DEFAULTS.fov);
+		expect(BADGE_CAMERA_DEFAULTS.fov).toBeLessThan(BADGE_CAMERA_LIMITS.maxFov);
 	});
 });
 
@@ -502,6 +626,107 @@ describe('badgeDropLayout (start pose, above the viewport)', () => {
 		chain.slice(1).forEach((body, i) => {
 			expect(distance(body, chain[i])).toBeLessThanOrEqual(BADGE_PHYSICS.segmentLength);
 		});
+	});
+
+	it('keeps the lateral offset at 0.3 from the (now centred) anchor', () => {
+		expect(BADGE_DROP.lateralOffset).toBe(0.3);
+		expect(badgeDropLayout().fixedPosition[0]).toBe(0);
+		expect(badgeDropLayout().cardPosition[0]).toBeCloseTo(0.3, 12);
+	});
+
+	describe('with a configured camera (badge-center-camera)', () => {
+		/** Cámara REAL de three con una cámara del badge ya resuelta (x/y de BADGE_CAMERA). */
+		function configuredCamera(
+			settings: Required<Products3dBadgeCamera>,
+			aspect: number,
+		): PerspectiveCamera {
+			const camera = new PerspectiveCamera(settings.fov, aspect, 0.1, 100);
+			camera.position.set(BADGE_CAMERA.position[0], BADGE_CAMERA.position[1], settings.distance);
+			camera.updateMatrixWorld();
+			return camera;
+		}
+
+		// Todas ABREN más que la de por defecto (su borde superior en z = 0 queda por encima de 2.88):
+		// con la pose derivada de BADGE_CAMERA la tarjeta asomaría en todas.
+		const WIDER_CAMERAS: Required<Products3dBadgeCamera>[] = [
+			{ fov: 40, distance: 10 },
+			{ fov: 25, distance: maxBadgeCameraDistance(25) },
+			{ fov: 60, distance: maxBadgeCameraDistance(60) },
+		];
+
+		it('is not the default pose: a camera that sees more starts the card higher', () => {
+			const layout = badgeDropLayout(BADGE_DROP.lateralOffset, WIDER_CAMERAS[0]);
+
+			expect(layout.cardPosition[1]).toBeGreaterThan(badgeDropLayout().cardPosition[1]);
+		});
+
+		it.each(WIDER_CAMERAS.flatMap((camera) => [16 / 9, 9 / 16].map((aspect) => [camera, aspect])))(
+			'keeps every corner of the card AABB above the frustum of camera %o (aspect %s)',
+			(settings, aspect) => {
+				const cameraSettings = settings as Required<Products3dBadgeCamera>;
+				const camera = configuredCamera(cameraSettings, aspect as number);
+				const layout = badgeDropLayout(BADGE_DROP.lateralOffset, cameraSettings);
+
+				for (const corner of cardCorners(layout.cardPosition)) {
+					expect(corner.project(camera).y).toBeGreaterThan(1);
+				}
+			},
+		);
+
+		it('leaves exactly BADGE_DROP.frustumMargin under the farthest corner for that camera', () => {
+			const settings = WIDER_CAMERAS[0];
+			const card = badgeDropLayout(BADGE_DROP.lateralOffset, settings).cardPosition;
+			const { min } = BADGE_CARD_MODEL.bounds;
+			const tanHalfFov = Math.tan((settings.fov * Math.PI) / 360);
+			const frustumTopAtFarZ = (settings.distance - (card[2] + min[2])) * tanHalfFov;
+
+			expect(card[1] + min[1] - frustumTopAtFarZ).toBeCloseTo(BADGE_DROP.frustumMargin, 10);
+		});
+
+		it('also follows a camera that sees LESS (bigger card): starts lower, still off screen', () => {
+			const closer = { fov: 20, distance: 9 };
+			const layout = badgeDropLayout(BADGE_DROP.lateralOffset, closer);
+			const camera = configuredCamera(closer, 16 / 9);
+
+			expect(layout.cardPosition[1]).toBeLessThan(badgeDropLayout().cardPosition[1]);
+			for (const corner of cardCorners(layout.cardPosition)) {
+				expect(corner.project(camera).y).toBeGreaterThan(1);
+			}
+		});
+
+		it.each([10, 25, 60, BADGE_CAMERA_LIMITS.maxFov - 1])(
+			'starts with every rope within segmentLength at the widest accepted camera (fov %s)',
+			(fov) => {
+				const { fixedPosition, j1Position, j2Position, j3Position } = badgeDropLayout(
+					BADGE_DROP.lateralOffset,
+					{ fov, distance: maxBadgeCameraDistance(fov) },
+				);
+				const chain = [fixedPosition, j1Position, j2Position, j3Position];
+
+				chain.slice(1).forEach((body, i) => {
+					expect(distance(body, chain[i])).toBeLessThanOrEqual(BADGE_PHYSICS.segmentLength);
+				});
+			},
+		);
+
+		it('falls back to the default camera fields for unusable values, never NaN', () => {
+			const layout = badgeDropLayout(BADGE_DROP.lateralOffset, {
+				fov: Number.NaN,
+				distance: -3,
+			});
+
+			expect(layout).toEqual(badgeDropLayout());
+		});
+
+		it.each([Number.MIN_VALUE, 1e-310, BADGE_CAMERA_LIMITS.minFov - 1e-9])(
+			'falls back to the default fov for a degenerate fov %s (finite pose)',
+			(fov) => {
+				const layout = badgeDropLayout(BADGE_DROP.lateralOffset, { fov, distance: 13 });
+
+				expect(layout).toEqual(badgeDropLayout());
+				expect(layout.cardPosition.every(Number.isFinite)).toBe(true);
+			},
+		);
 	});
 
 	it('starts with no chain collider inside the card collider or inside another link', () => {

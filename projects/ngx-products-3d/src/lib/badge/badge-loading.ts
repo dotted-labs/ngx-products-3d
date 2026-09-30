@@ -1,6 +1,13 @@
 import type { ResourceStatus } from '@angular/core';
 import type { BufferGeometry } from 'three';
-import { BADGE_LAYOUT, badgeDropLayout, type BadgeLayout } from './badge.config';
+import type { Products3dBadgeCamera } from '../types';
+import {
+	BADGE_CAMERA_DEFAULTS,
+	BADGE_DROP,
+	BADGE_LAYOUT,
+	badgeDropLayout,
+	type BadgeLayout,
+} from './badge.config';
 
 /**
  * Gate de arranque del badge (hotfix badge-loading-drop): lógica pura, sin Angular ni WebGL. La
@@ -135,9 +142,12 @@ export function prefersReducedMotion(
 
 /**
  * Pose de salida de los cuerpos: la de reposo (`BADGE_LAYOUT`) si se pide movimiento reducido —
- * aparece ya colgando, sin caída— y si no la de la caída (`badgeDropLayout()`, fuera del viewport por
- * arriba).
+ * aparece ya colgando, sin caída— y si no la de la caída (`badgeDropLayout()`, fuera del frustum de
+ * `camera` por arriba).
  */
-export function badgeStartLayout(reducedMotion: boolean): BadgeLayout {
-	return reducedMotion ? BADGE_LAYOUT : badgeDropLayout();
+export function badgeStartLayout(
+	reducedMotion: boolean,
+	camera: Readonly<Required<Products3dBadgeCamera>> = BADGE_CAMERA_DEFAULTS,
+): BadgeLayout {
+	return reducedMotion ? BADGE_LAYOUT : badgeDropLayout(BADGE_DROP.lateralOffset, camera);
 }

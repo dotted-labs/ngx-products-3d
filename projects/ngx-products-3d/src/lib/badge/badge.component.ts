@@ -4,19 +4,25 @@ import {
 	Component,
 	computed,
 	CUSTOM_ELEMENTS_SCHEMA,
+	effect,
 	inject,
 	input,
 	output,
 	PLATFORM_ID,
+	signal,
+	untracked,
 } from '@angular/core';
+import type { Camera } from 'three';
+import type { NgtState } from 'angular-three';
 import { NgtCanvas } from 'angular-three/dom';
 import { NgtrPhysics } from 'angular-three-rapier';
 import { NgtsEnvironment, NgtsLightformer } from 'angular-three-soba/staging';
 import { PRODUCTS_3D_BADGE_THEME } from '../tokens';
-import type { BadgeMemberData, Products3dBadgeTheme } from '../types';
+import type { BadgeMemberData, Products3dBadgeCamera, Products3dBadgeTheme } from '../types';
+import { applyBadgeCamera, badgeCanvasCamera, resolveBadgeCamera } from './badge-camera';
 import { Products3dBadgeScene } from './badge-scene.component';
 import { assertValidBadgeTheme } from './badge-theme';
-import { BADGE_CAMERA, BADGE_LIGHTING, BADGE_LOOP_PRIORITY, BADGE_PHYSICS } from './badge.config';
+import { BADGE_LIGHTING, BADGE_LOOP_PRIORITY, BADGE_PHYSICS } from './badge.config';
 
 /**
  * Acreditación 3D de socio. Wrapper todo-en-uno: canvas + mundo físico + escena.
@@ -37,7 +43,12 @@ import { BADGE_CAMERA, BADGE_LIGHTING, BADGE_LOOP_PRIORITY, BADGE_PHYSICS } from
 	selector: 'products-3d-badge',
 	template: `
 		@if (isBrowser) {
-			<ngt-canvas [camera]="camera">
+			<!--
+				La cámara del canvas se crea con canvasCamera() (leída una vez) y, como el canvas no
+				reaplica sus options a una cámara ya creada, los cambios posteriores del input camera los
+				aplica el effect del constructor sobre la instancia que entrega (created).
+			-->
+			<ngt-canvas [camera]="canvasCamera()" (created)="onCanvasCreated($event)">
 				<ng-template canvasContent>
 					<!--
 						Iluminación: hermana de la física (las luces y el environment no son cuerpos
@@ -60,6 +71,7 @@ import { BADGE_CAMERA, BADGE_LIGHTING, BADGE_LOOP_PRIORITY, BADGE_PHYSICS } from
 							<products-3d-badge-scene
 								[member]="member()"
 								[theme]="resolvedTheme()"
+								[camera]="resolvedCamera()"
 								(ready)="onSceneReady()"
 							/>
 						</ng-template>
@@ -88,6 +100,13 @@ export class Products3dBadge {
 	readonly debug = input<boolean>(false);
 
 	/**
+	 * Cámara: `fov` vertical (grados) y `distance` al badge. Opcional; sin él, `BADGE_CAMERA`. Sirve
+	 * para agrandar la tarjeta sin agrandar el contenedor (menos `distance` o menos `fov`). Valores
+	 * inválidos caen al default con aviso dev; se puede cambiar en caliente (la caída no se repite).
+	 */
+	readonly camera = input<Products3dBadgeCamera>();
+
+	/**
 	 * El badge terminó de cargar y se soltó (cae o, con movimiento reducido, aparece en reposo). Una
 	 * sola vez; re-emisión del `ready` de `Products3dBadgeScene`.
 	 */
@@ -98,7 +117,8 @@ export class Products3dBadge {
 	// Guard SSR: canvas y física solo montan en browser; en server el template queda vacío
 	protected readonly isBrowser = isPlatformBrowser(inject(PLATFORM_ID));
 
-	protected readonly camera = BADGE_CAMERA;
+	/** Cámara ya creada del canvas (output `created`), destino de los cambios en caliente */
+	private readonly canvasCameraRef = signal<Camera | undefined>(undefined);
 
 	// Intensidad del ambient. Math.PI (no 1) por la iluminación físicamente correcta de
 	// three r155+: con la escala lineal actual una ambientLight de 1 queda apagada; ver
@@ -106,6 +126,22 @@ export class Products3dBadge {
 	protected readonly ambientIntensity = BADGE_LIGHTING.ambientIntensity;
 	protected readonly environmentOptions = BADGE_LIGHTING.environment;
 	protected readonly lightformers = BADGE_LIGHTING.lightformers;
+
+	/**
+	 * Cámara resuelta: defaults, fallback con aviso dev y distancia acotada para que el anclaje de la
+	 * correa no asome. La recibe también la escena, que deriva de ella la correa y
+	 * la pose de salida; como ya va resuelta, la escena no vuelve a avisar.
+	 */
+	protected readonly resolvedCamera = computed(() => resolveBadgeCamera(this.camera()));
+	/**
+	 * Options de cámara del `<ngt-canvas>`, leídas UNA vez (primer CD): el canvas solo las usa al crear
+	 * su cámara, y cada options nuevas le harían re-configurarse entero (incluido un `gl.setSize` que
+	 * reasigna el buffer del canvas) para nada. Los cambios posteriores, e incluso uno que llegue antes
+	 * de que exista la cámara, los aplica el effect del constructor al recibir `(created)`.
+	 */
+	protected readonly canvasCamera = computed(() =>
+		untracked(() => badgeCanvasCamera(this.resolvedCamera())),
+	);
 
 	// updatePriority: el paso físico corre ANTES de la correa de la escena, que se construye con la
 	// pose ya interpolada del frame (orden completo del loop en BADGE_LOOP_PRIORITY).
@@ -129,6 +165,24 @@ export class Products3dBadge {
 		}
 		return assertValidBadgeTheme(theme);
 	});
+
+	constructor() {
+		// Cámara en caliente: <ngt-canvas> crea su cámara UNA vez con canvasCamera() y, re-configurado
+		// con otras options, no la toca (compara contra las options de la primera vez, no contra la
+		// instancia). Así que cada cambio del input camera se aplica aquí sobre la instancia creada.
+		// One-shot por cambio, no por frame; aplicarla al crearse es idempotente (mismos valores).
+		effect(() => {
+			const target = this.canvasCameraRef();
+			if (target) {
+				applyBadgeCamera(target, this.resolvedCamera());
+			}
+		});
+	}
+
+	/** El canvas creó su store: se guarda su cámara para aplicarle los cambios del input `camera`. */
+	protected onCanvasCreated(state: NgtState): void {
+		this.canvasCameraRef.set(state.camera);
+	}
 
 	/** Re-emite el `ready` de la escena hacia la app consumidora. */
 	protected onSceneReady(): void {

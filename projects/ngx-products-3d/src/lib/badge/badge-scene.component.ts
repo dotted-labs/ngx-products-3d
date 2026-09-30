@@ -14,6 +14,7 @@ import {
 	PLATFORM_ID,
 	type ResourceRef,
 	signal,
+	untracked,
 	viewChild,
 } from '@angular/core';
 import { CatmullRomCurve3, Euler, Quaternion, RepeatWrapping, Vector2, Vector3 } from 'three';
@@ -37,9 +38,10 @@ import type { RigidBody } from '@dimforge/rapier3d-compat';
 import { MeshLineGeometry } from 'meshline';
 import { resourceValueOrUndefined } from '../resource-value';
 import { PRODUCTS_3D_CONFIG } from '../tokens';
-import type { BadgeMemberData, Products3dBadgeTheme } from '../types';
+import type { BadgeMemberData, Products3dBadgeCamera, Products3dBadgeTheme } from '../types';
 import { localPointToParent, sampleCurveByArcLength } from './badge-band';
 import { BadgeBandMaterial } from './badge-band-material';
+import { resolveBadgeCamera } from './badge-camera';
 import { cursorFor } from './badge-cursor';
 import { projectPointerToWorld, subtractInto } from './badge-drag';
 import {
@@ -97,7 +99,9 @@ interface BadgeGLTF {
  * Exportado también para consumidores con canvas propio (composición
  * con otros elementos 3D futuros, spec-03 Fase 5). En ese caso el `<ngtr-physics>` que la envuelve
  * debe llevar `updatePriority: BADGE_LOOP_PRIORITY.physicsStep`: la correa lee la pose ya
- * interpolada del frame y el paso físico tiene que ir antes que ella (ver `BADGE_LOOP_PRIORITY`).
+ * interpolada del frame y el paso físico tiene que ir antes que ella (ver `BADGE_LOOP_PRIORITY`). Si
+ * su cámara no es la de por defecto (`BADGE_CAMERA`), pásale `fov` y distancia por el input `camera`:
+ * la escena no mueve la cámara del canvas, pero deriva de ella la correa y la pose de salida.
  *
  * Arranque (hotfix badge-loading-drop): mientras cargan el GLB, la textura de la correa y el frente
  * (textura base + fuente), la tarjeta y la correa no se pintan y la cadena está congelada. Con todo
@@ -114,15 +118,30 @@ interface BadgeGLTF {
 			#fixedBody
 			rigidBody="fixed"
 			[options]="bodyOptions"
-			[position]="layout.fixedPosition"
+			[position]="layout().fixedPosition"
 		/>
-		<ngt-object3D #j1Body rigidBody="dynamic" [options]="bodyOptions" [position]="layout.j1Position">
+		<ngt-object3D
+			#j1Body
+			rigidBody="dynamic"
+			[options]="bodyOptions"
+			[position]="layout().j1Position"
+		>
 			<ngt-object3D [ballCollider]="segmentColliderArgs" />
 		</ngt-object3D>
-		<ngt-object3D #j2Body rigidBody="dynamic" [options]="bodyOptions" [position]="layout.j2Position">
+		<ngt-object3D
+			#j2Body
+			rigidBody="dynamic"
+			[options]="bodyOptions"
+			[position]="layout().j2Position"
+		>
 			<ngt-object3D [ballCollider]="segmentColliderArgs" />
 		</ngt-object3D>
-		<ngt-object3D #j3Body rigidBody="dynamic" [options]="bodyOptions" [position]="layout.j3Position">
+		<ngt-object3D
+			#j3Body
+			rigidBody="dynamic"
+			[options]="bodyOptions"
+			[position]="layout().j3Position"
+		>
 			<ngt-object3D [ballCollider]="segmentColliderArgs" />
 		</ngt-object3D>
 		<!--
@@ -143,7 +162,7 @@ interface BadgeGLTF {
 			#cardBody
 			rigidBody="dynamic"
 			[options]="bodyOptions"
-			[position]="layout.cardPosition"
+			[position]="layout().cardPosition"
 			[visible]="released()"
 			(pointerdown)="onPointerDown($event)"
 			(pointerup)="onPointerUp($event)"
@@ -275,6 +294,12 @@ export class Products3dBadgeScene {
 	readonly member = input.required<BadgeMemberData>();
 	readonly theme = input.required<Products3dBadgeTheme>();
 	readonly debug = input<boolean>(false);
+	/**
+	 * Cámara del canvas en el que se monta la escena (`fov` y distancia). La escena NO la aplica: solo
+	 * deriva de ella el teselado de la correa y la pose de salida de la caída. `Products3dBadge` le pasa
+	 * la suya; con un canvas propio, pásale la de tu canvas. Sin input: `BADGE_CAMERA_DEFAULTS`.
+	 */
+	readonly camera = input<Products3dBadgeCamera>();
 
 	private readonly fixedBody = viewChild.required('fixedBody', { read: NgtrRigidBody });
 	private readonly j1Body = viewChild.required('j1Body', { read: NgtrRigidBody });
@@ -352,17 +377,24 @@ export class Products3dBadgeScene {
 	protected readonly bandMap = computed(() => resourceValueOrUndefined(this.bandTexture));
 
 	/**
-	 * Teselado de la textura de la correa, derivado del aspecto REAL de la textura del tema
-	 * (`bandRepeatFor`, spec-04 R5). El aspecto solo se conoce tras cargar la imagen, así que es un
-	 * `computed` sobre `bandMap()`: se recalcula una vez por textura, NO por frame (regla de cero
-	 * allocations de `docs/architecture.md` §4 — en `beforeRender` no pinta nada). Mientras el
+	 * Cámara ACTIVA, resuelta: defaults, fallback con aviso dev y distancia acotada para no enseñar el
+	 * anclaje de la correa. De ella derivan el teselado y la pose de salida.
+	 */
+	private readonly activeCamera = computed(() => resolveBadgeCamera(this.camera()));
+
+	/**
+	 * Teselado de la textura de la correa, derivado del aspecto REAL de la textura del tema y del `fov`
+	 * de la cámara activa, que fija el ancho de la correa (`bandRepeatFor`, spec-04 R5). El aspecto
+	 * solo se conoce tras cargar la imagen, así que es un `computed` sobre `bandMap()` y
+	 * `activeCamera()`: se recalcula una vez por textura o por cambio de cámara, NO por frame (regla de
+	 * cero allocations de `docs/architecture.md` §4 — en `beforeRender` no pinta nada). Mientras el
 	 * recurso no resuelve (`useMap` = 0) o la imagen no expone dimensiones, la división da `NaN` y
 	 * `bandRepeatFor` degrada al aspecto de referencia: nunca un `NaN` en el uniform.
 	 */
 	protected readonly bandRepeat = computed<[number, number]>(() => {
 		const image = this.bandMap()?.image as { width?: number; height?: number } | undefined;
 
-		return bandRepeatFor((image?.width ?? 0) / (image?.height ?? 0));
+		return bandRepeatFor((image?.width ?? 0) / (image?.height ?? 0), this.activeCamera().fov);
 	});
 
 	private readonly store = injectStore();
@@ -382,10 +414,18 @@ export class Products3dBadgeScene {
 		this.isBrowser &&
 		prefersReducedMotion(inject(DOCUMENT).defaultView, BADGE_LOADING.reducedMotionQuery);
 	/**
-	 * Pose de salida de los bodies: fuera del viewport por arriba (`badgeDropLayout`, caen al soltar)
-	 * o, con movimiento reducido, directamente la de reposo (`BADGE_LAYOUT`).
+	 * Pose de salida de los bodies: fuera del viewport por arriba (`badgeDropLayout`, caen al soltar,
+	 * derivada del frustum de la cámara activa) o, con movimiento reducido, directamente la de reposo
+	 * (`BADGE_LAYOUT`).
+	 *
+	 * Se evalúa UNA sola vez, en la primera lectura (el primer CD, con los inputs ya puestos): el
+	 * `untracked` deja al computed sin dependencias, así que un cambio de cámara posterior NO la
+	 * recalcula. Recalcularla movería el `[position]` de los bodies ya soltados, es decir, repetiría la
+	 * caída; la regla del arranque es que solo ocurre una vez.
 	 */
-	protected readonly layout = badgeStartLayout(this.reducedMotion);
+	protected readonly layout = computed(() =>
+		untracked(() => badgeStartLayout(this.reducedMotion, this.activeCamera())),
+	);
 
 	/**
 	 * Fase del arranque (`nextLoadPhase`): `loading` → `compiling` → `released`. Hasta `released` la

@@ -1,5 +1,52 @@
 # Sesión actual
 
+## ▶ En curso (2026-09-30): feature `id: 12` — `badge-center-camera` (0.3.2)
+
+- **Encargo**: `progress/task_center-scene.md`. Rama `feat/center-scene` (base `main` `dc8aed4`).
+- **Pedido de Sergio**: centrar la escena. Alcance elegido por él: «Centrar + cámara configurable»
+  (`BADGE_LAYOUT` a x = 0, input opcional de cámara con `fov` y distancia; `bandRepeatFor` y
+  `badgeDropLayout` desde la cámara activa; caída lateral intacta).
+- **Escalado**: fase compleja → 1 implementer → 1 reviewer.
+- **Review**: ronda 1 CHANGES_REQUESTED (cota inferior del `fov`); ronda 2 **APPROVED**
+  (`progress/review_center-scene.md`). Verificación del leader tras la ronda 2: build ✅ · lint ✅ ·
+  test **397/397** (16 ficheros) ✅ · playground build ✅. Commiteado en `feat/center-scene`.
+- **Pendiente**: **N3 de Sergio** (checklist en `progress/impl_center-scene.md`, con log de consola;
+  norma 6) → entonces id 12 = `done`. Decisión de producto abierta: grosor de la correa con el `fov`
+  (más ancha que la ranura del clamp por encima de ~28°); ver «Hallazgo» del informe.
+- **Baseline** (leader, 2026-09-30): build ✅ · lint ✅ · test **319/319** (15 ficheros) ✅.
+- **En curso (implementer)**: feature 12 — `badge-center-camera`. `feature_list.json` id 12 =
+  `in_progress`. Baseline revalidado: build ✅ · lint ✅ · test **319/319** ✅.
+- **Plan**:
+  1. Config: `BADGE_LAYOUT` a x = 0; `BADGE_CAMERA_DEFAULTS` + `BADGE_CAMERA_LIMITS`;
+     `bandRepeatFor(aspect, fov = BADGE_CAMERA.fov)` y `badgeDropLayout(offset, camera = defaults)`.
+  2. `badge-camera.ts` (interno): `resolveBadgeCamera` (fallback + warn dev; acota la distancia para
+     que el anclaje de la correa no asome), opciones del canvas y aplicación en caliente a la cámara.
+  3. Tipo público `Products3dBadgeCamera` (`fov`, `distance`); input `camera` en `Products3dBadge`
+     (aplica a la cámara del canvas vía `(created)`) y en `Products3dBadgeScene` (solo deriva: correa y
+     pose de salida, esta leída una vez).
+  4. Tests N1 + mutaciones de discriminancia (copia + hash). Playground con controles fov/distancia.
+  5. README publicado + raíz, JSDoc, CHANGELOG 0.3.2, `package.json` 0.3.2. Informe
+     `progress/impl_center-scene.md`.
+- **Criterios de aceptación aplicables**: los 11 de `progress/task_center-scene.md` (= los 8 de
+  `feature_list.json` id 12).
+- **Estado (implementer, 2026-09-30)**: implementado, **pendiente de review**. build ✅ · lint ✅ ·
+  test **382/382** (16 ficheros) ✅ · playground build ✅ · playground lint ✅. 15 mutaciones de
+  discriminancia, ninguna sobrevive. Lib y `package.json` en 0.3.2, CHANGELOG 0.3.2. Sin commitear.
+  Informe (con checklist N3 para Sergio): `progress/impl_center-scene.md`. Decisión CA6: la lib
+  **acota `distance`** (+ warn dev) para que el anclaje de la correa nunca entre en el viewport.
+  ⚠️ Hallazgo para el leader: con otro `fov` la correa cambia de grosor relativo a la tarjeta
+  (meshline); documentado, no compensado (lo contradiría el CA4). Propuesta en el informe.
+- **Review ronda 1**: CHANGES_REQUESTED (`progress/review_center-scene.md`, cota inferior del `fov`).
+- **Estado (implementer, ronda 2, 2026-09-30)**: correcciones aplicadas, **pendiente de re-review**.
+  `BADGE_CAMERA_LIMITS.minFov` = 1 en los tres guards (+ guard de teselado finito); O2 holgura del
+  anclaje = medio ancho de la correa (según `fov`) + `anchorMargin` 0.15 (sustituye a
+  `anchorClearance`); O3 `BADGE_CAMERA_DEFAULTS` `Readonly`; O4 orden de clase. build ✅ · lint ✅ ·
+  test **397/397** ✅ · playground build ✅ · playground lint ✅. 5 mutaciones nuevas (R1–R5),
+  ninguna sobrevive. Sin commitear. Detalle: § «Post-review (ronda 2)» de
+  `progress/impl_center-scene.md`.
+
+---
+
 - **Fecha**: 2026-09-28
 - **Spec**: ninguna activa (`docs/specs/active/` solo con su README). `spec-04` **archivada** en
   `docs/specs/spec-04-typography-band-assets.md`.

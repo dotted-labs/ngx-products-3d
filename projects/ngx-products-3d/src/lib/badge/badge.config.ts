@@ -1,6 +1,55 @@
+import type { Products3dBadgeCamera } from '../types';
+
+/**
+ * Cámara por defecto del canvas del badge, en la forma de las options de `<ngt-canvas [camera]>`:
+ * centrada en x = 0 e y = 0, a 13 uds del plano del badge y con `fov` VERTICAL de 25°. El input
+ * `camera` de `Products3dBadge` solo cambia `fov` y la z (su `distance`); la x y la y salen siempre de
+ * aquí.
+ */
 export const BADGE_CAMERA = {
 	position: [0, 0, 13] as [number, number, number],
 	fov: 25,
+} as const;
+
+/**
+ * `BADGE_CAMERA` en la forma del input `camera` (`Products3dBadgeCamera`, todos los campos
+ * resueltos): lo que usa el badge cuando no se le pasa cámara, o cuando un campo falta o es inválido.
+ */
+export const BADGE_CAMERA_DEFAULTS: Readonly<Required<Products3dBadgeCamera>> = {
+	fov: BADGE_CAMERA.fov,
+	distance: BADGE_CAMERA.position[2],
+};
+
+/** Límites con los que se valida el input `camera` del badge */
+export const BADGE_CAMERA_LIMITS = {
+	/**
+	 * `fov` vertical mínimo, INCLUIDO (grados). Hacia 0 la proyección degenera: `tan(fov/2)` → 0, y un
+	 * `fov` positivo pero minúsculo (subnormal) da una matriz de proyección con `NaN` y un teselado de
+	 * la correa infinito. Mucho antes deja de haber configuración útil: con 1° la tarjeta en reposo
+	 * solo cabe con la cámara a más de ~170 uds, y por debajo de ~0.2° ni siquiera cabría antes del
+	 * plano `far` (1000) de la cámara que crea el canvas. El rango útil real es 10°–60°.
+	 */
+	minFov: 1,
+	/**
+	 * `fov` vertical máximo, EXCLUIDO (grados). El límite matemático sería 180° (`tan(fov/2)`
+	 * diverge), pero mucho antes deja de tener sentido: para no enseñar el anclaje de la correa, un
+	 * `fov` de 120° obliga a poner la cámara a ~1.7 uds del badge (ojo de pez, y la tarjeta al girar se
+	 * acerca 0.8 uds a ella), y hacia 170° la pose de salida de la caída ya no cabe en la cadena (tramos
+	 * de más de `BADGE_PHYSICS.segmentLength`). El rango útil real está muy por debajo (10°–60°).
+	 */
+	maxFov: 120,
+	/**
+	 * Margen (uds de mundo) que se exige entre el extremo superior de la correa y el borde superior del
+	 * frustum en el plano del anclaje fijo (`BADGE_LAYOUT.fixedPosition`). El anclaje es el extremo
+	 * CORTADO de la correa: si entra en el viewport se ve la correa acabar en el aire.
+	 *
+	 * La holgura total NO es este valor solo: se le suma el medio ancho de la correa, que depende del
+	 * `fov` (`BADGE_BAND.lineWidth · tan(fov/2) / 2`, ver `BADGE_BAND.lineWidth`), porque al inclinarse
+	 * con el balanceo la esquina de su extremo sube hasta ese medio ancho por encima del anclaje. Con el
+	 * `fov` por defecto la holgura total es 0.111 + 0.15 ≈ 0.26; a 60°, ≈ 0.44. Con una cámara que la
+	 * incumpla, el badge acerca la cámara (`distance`) hasta cumplirla y avisa en dev.
+	 */
+	anchorMargin: 0.15,
 } as const;
 
 export const BADGE_PHYSICS = {
@@ -104,16 +153,22 @@ export interface BadgeLayout {
  * `cardJointAnchor[1]` por debajo. Con la gravedad es la pose de equilibrio: los joints se cumplen
  * sin corrección y nada se mueve.
  *
+ * Todo en x = 0, el eje de la cámara (`BADGE_CAMERA`): el badge cuelga CENTRADO en el contenedor
+ * (hasta 0.3.1 colgaba en x = 0.5, desplazado a la derecha).
+ *
  * Es la pose de salida con `prefers-reduced-motion: reduce` (aparece ya colgando, sin caída). Sin
  * esa preferencia el badge sale de `badgeDropLayout()` (fuera del viewport por arriba) y cae hasta
- * aquí. El anclaje fijo es el mismo en las dos.
+ * aquí. El anclaje fijo es el mismo en las dos, y queda siempre por encima del viewport: con la
+ * cámara por defecto el borde superior del frustum en z = 0 está en 13 · tan(12.5°) ≈ 2.88 < 4, y con
+ * una cámara configurada lo garantiza el acotado de `distance` (medio ancho de la correa +
+ * `BADGE_CAMERA_LIMITS.anchorMargin`).
  */
 export const BADGE_LAYOUT: BadgeLayout = {
-	fixedPosition: [0.5, 4, 0],
-	j1Position: [0.5, 3, 0],
-	j2Position: [0.5, 2, 0],
-	j3Position: [0.5, 1, 0],
-	cardPosition: [0.5, 1 - BADGE_PHYSICS.cardJointAnchor[1], 0],
+	fixedPosition: [0, 4, 0],
+	j1Position: [0, 3, 0],
+	j2Position: [0, 2, 0],
+	j3Position: [0, 1, 0],
+	cardPosition: [0, 1 - BADGE_PHYSICS.cardJointAnchor[1], 0],
 };
 
 /** Correa (lanyard) renderizada por frame con meshline (spec-02 Fase 1) */
@@ -123,9 +178,10 @@ export const BADGE_BAND = {
 	/**
 	 * `lineWidth` de la meshline. OJO: NO son unidades de mundo. Con `sizeAttenuation` (default 1
 	 * de meshline) el shader suma el offset en espacio de clip, así que el ancho real de la correa
-	 * es `lineWidth * tan(fov/2)` = **0.2217 uds** con `BADGE_CAMERA.fov` = 25 (constante con la
-	 * distancia). De ahí sale el teselado de la correa, que `bandRepeatFor` recalcula solo a partir
-	 * de este valor: no hay nada que ajustar a mano si se toca.
+	 * es `lineWidth * tan(fov/2)` con el `fov` de la cámara ACTIVA: **0.2217 uds** con el default
+	 * (25°). No depende de la distancia, pero sí del `fov`: con un `fov` menor la correa sale más
+	 * estrecha respecto a la tarjeta (a 20°, 0.176 uds). De ahí sale el teselado de la correa, que
+	 * `bandRepeatFor` recalcula a partir de este valor y del `fov`: no hay nada que ajustar a mano.
 	 */
 	lineWidth: 1,
 	/** La correa se dibuja siempre encima; sin test de profundidad para evitar clipping con la tarjeta */
@@ -162,8 +218,12 @@ export const BADGE_BAND = {
 	 * Margen por los dos lados:
 	 * - Ruido: emulando en float32 las dos proyecciones de un mismo punto, difieren en ≤ ~5e-7.
 	 * - Segmento real: la correa (~3 uds) se muestrea en `BADGE_PHYSICS.curvePoints` tramos de
-	 *   ~0.1 uds, que a la distancia de la cámara (13) con `fov` 25 proyectan a ~3e-2.
-	 * 1e-4 queda unas 200 veces por encima del ruido y unas 300 por debajo de un tramo real.
+	 *   ~0.1 uds, que proyectan a `tramo / (distance · tan(fov/2))`: ~3e-2 con la cámara por defecto
+	 *   (13, 25°). Con una cámara configurada el denominador nunca llega a
+	 *   `anclaje − BADGE_CAMERA_LIMITS.anchorMargin` (3.85: más allá se vería el anclaje y el badge
+	 *   acerca la cámara), así que un tramo nunca proyecta a menos de ~2.4e-2.
+	 * 1e-4 queda unas 200 veces por encima del ruido y al menos 240 por debajo de un tramo real con
+	 * cualquier cámara que acepte el badge (unas 300 con la de por defecto).
 	 */
 	endCapTolerance: 1e-4,
 } as const;
@@ -177,26 +237,54 @@ export const BADGE_BAND = {
  * El MÓDULO de la X es el número de teselas que mantiene el aspecto del arte sin estirarlo
  * (spec-03-F3 feature 14, derivado a mano entonces; spec-04 R5 lo convierte en esta fn):
  * - Longitud de la correa = `BADGE_BAND.ropeJoints` (3) × `BADGE_PHYSICS.segmentLength` (1) = **3 uds**.
- * - Ancho de la correa = **0.2217 uds**, NO `lineWidth`: con `sizeAttenuation` (default 1 de
- *   meshline) el shader suma el offset en espacio de CLIP (`normal.xy *= .5 * lineWidth`), de donde
- *   el ancho en mundo es `lineWidth * tan(fov/2)` = 1 × tan(12.5°) con `BADGE_CAMERA.fov` = 25
- *   (constante con la distancia). `fov` está en GRADOS y `Math.tan` quiere radianes.
- * - Una tesela mide `aspecto × ancho` de largo ⇒ repeticiones = `3 / (aspecto × 0.2217)`. Con el
- *   aspecto de referencia 4:1 sale **3.383**, exactamente el valor que estaba precalculado a mano.
+ * - Ancho de la correa = `lineWidth * tan(fov/2)`, NO `lineWidth`: con `sizeAttenuation` (default 1
+ *   de meshline) el shader suma el offset en espacio de CLIP (`normal.xy *= .5 * lineWidth`). Depende
+ *   del `fov` de la cámara ACTIVA (parámetro `fov`) y no de su distancia: **0.2217 uds** con el
+ *   default de 25° (1 × tan(12.5°)). `fov` está en GRADOS y `Math.tan` quiere radianes.
+ * - Una tesela mide `aspecto × ancho` de largo ⇒ repeticiones = `3 / (aspecto × ancho)`. Con el
+ *   aspecto de referencia 4:1 y el `fov` por defecto sale **3.383**, exactamente el valor que estaba
+ *   precalculado a mano. Con un `fov` menor la correa es más estrecha, cada tesela más corta y hay
+ *   más repeticiones.
  *
  * El SIGNO negativo invierte la U (orientación del arte del lanyard, spec-03 feature 4) y se
- * conserva siempre. Aspecto no medible / 0 / negativo / `NaN` → `BADGE_BAND.referenceTextureAspect`,
- * NUNCA `NaN`.
+ * conserva siempre. Aspecto no medible / 0 / negativo / `NaN` → `BADGE_BAND.referenceTextureAspect`;
+ * `fov` fuera de [`BADGE_CAMERA_LIMITS.minFov`, `BADGE_CAMERA_LIMITS.maxFov`) → `BADGE_CAMERA.fov`.
+ * Si aun así el resultado no es finito (un aspecto positivo pero minúsculo desborda la división), se
+ * usa el del aspecto de referencia. NUNCA `NaN` ni infinito en el uniform.
  */
-export function bandRepeatFor(textureAspect: number): [number, number] {
-	const aspect =
-		Number.isFinite(textureAspect) && textureAspect > 0
-			? textureAspect
-			: BADGE_BAND.referenceTextureAspect;
-	const bandWidth = BADGE_BAND.lineWidth * Math.tan((BADGE_CAMERA.fov * Math.PI) / 360);
+export function bandRepeatFor(
+	textureAspect: number,
+	fov: number = BADGE_CAMERA.fov,
+): [number, number] {
+	const aspect = positiveFiniteOr(textureAspect, BADGE_BAND.referenceTextureAspect);
+	const activeFov = usableFovOr(fov, BADGE_CAMERA.fov);
+	const bandWidth = BADGE_BAND.lineWidth * Math.tan((activeFov * Math.PI) / 360);
 	const bandLength = BADGE_BAND.ropeJoints * BADGE_PHYSICS.segmentLength;
+	const tiles = bandLength / (aspect * bandWidth);
 
-	return [-(bandLength / (aspect * bandWidth)), 1];
+	return [
+		-(Number.isFinite(tiles)
+			? tiles
+			: bandLength / (BADGE_BAND.referenceTextureAspect * bandWidth)),
+		1,
+	];
+}
+
+/** `value` si es finito y > 0; si no, `fallback`. Guard de las derivaciones públicas */
+function positiveFiniteOr(value: number, fallback: number): number {
+	return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+/**
+ * `fov` si está en [`BADGE_CAMERA_LIMITS.minFov`, `BADGE_CAMERA_LIMITS.maxFov`); si no, `fallback`.
+ * Mismo rango que valida (con aviso dev) el input `camera` del badge.
+ */
+function usableFovOr(fov: number, fallback: number): number {
+	return Number.isFinite(fov) &&
+		fov >= BADGE_CAMERA_LIMITS.minFov &&
+		fov < BADGE_CAMERA_LIMITS.maxFov
+		? fov
+		: fallback;
 }
 
 /**
@@ -229,7 +317,7 @@ export const BADGE_CARD_MODEL = {
 	 * X[-0.219, 0.223] · Y[1.143, 1.564] · Z[-0.057, 0.053], y en el eje x = 0 tiene DOS huecos
 	 * pasantes:
 	 * - el ojal inferior, Y[1.176, 1.298], ancho máx. ≈ 0.218. En él engancha el `clip` (top 1.286).
-	 *   Es más estrecho que la correa (0.2217 uds, ver `BADGE_BAND.lineWidth`).
+	 *   Es más estrecho que la correa (0.2217 uds con el `fov` por defecto, ver `BADGE_BAND.lineWidth`).
 	 * - la ranura superior, **Y[1.458, 1.500]** y X[-0.123, 0.128] a media altura (0.251 de ancho).
 	 *   Es la abertura de la correa: la única en la que cabe.
 	 * Entre ambos, Y[1.298, 1.458] es chapa maciza. Centro de la ranura ⇒ y = (1.458 + 1.500) / 2
@@ -281,30 +369,44 @@ export const BADGE_DROP = {
 } as const;
 
 /**
- * Pose de SALIDA de la caída: tarjeta entera por encima del frustum de `BADGE_CAMERA` y cadena
- * plegada entre el anclaje fijo y el clip. Fn pura, sin estado: se evalúa una vez al montar la escena.
+ * Pose de SALIDA de la caída: tarjeta entera por encima del frustum de la cámara ACTIVA (`camera`) y
+ * cadena plegada entre el anclaje fijo y el clip. Fn pura, sin estado: la escena la evalúa una sola
+ * vez, al montar (un cambio de cámara posterior no repite la caída).
  *
  * Criterio escrito (y testeado proyectando las 8 esquinas con una cámara de three):
  * 1. El AABB entero del modelo (`BADGE_CARD_MODEL.bounds`, clip y clamp incluidos) tiene que quedar
  *    por encima del borde superior del frustum, con `BADGE_DROP.frustumMargin` de holgura.
- * 2. La cámara es la de `BADGE_CAMERA` (en `position`, mirando a −Z, `fov` VERTICAL en grados). El
- *    borde superior del frustum a una profundidad `d` es `camY + d · tan(fov/2)`: crece con la
- *    distancia, así que manda la esquina MÁS LEJANA de la caja (`z` mínima).
- * 3. Por tanto `cardY = camY + (camZ − (anclajeZ + bounds.min.z)) · tan(fov/2) + margen − bounds.min.y`.
- *    Con la config actual: 13.09 · tan(12.5°) ≈ 2.902 ⇒ `cardY` ≈ 2.902 + 0.25 + 1.125 ≈ **4.277**.
+ * 2. La cámara está en x/y de `BADGE_CAMERA.position` y a `camera.distance` del plano z = 0, mirando
+ *    a −Z con `camera.fov` VERTICAL en grados. El borde superior del frustum a una profundidad `d` es
+ *    `camY + d · tan(fov/2)`: crece con la distancia, así que manda la esquina MÁS LEJANA de la caja
+ *    (`z` mínima).
+ * 3. Por tanto `cardY = camY + (distance − (anclajeZ + bounds.min.z)) · tan(fov/2) + margen − bounds.min.y`.
+ *    Con la cámara por defecto: 13.09 · tan(12.5°) ≈ 2.902 ⇒ `cardY` ≈ 2.902 + 0.25 + 1.125 ≈ **4.277**.
  * 4. j3 = anclaje del joint en la tarjeta (`cardJointAnchor`): el spherical joint nace cumplido.
  * 5. j1 y j2 se reparten en la cuerda anclaje→j3 (1/3 y 2/3) y se adelantan en z el pliegue de
- *    `BADGE_DROP.chainFoldClearance`. Cada tramo mide ≈ 0.55 < `segmentLength`: los rope joints solo
- *    limitan la distancia MÁXIMA, así que nacen cumplidos y la cadena se estira al caer.
+ *    `BADGE_DROP.chainFoldClearance`. Con la cámara por defecto cada tramo mide ≈ 0.55 <
+ *    `segmentLength`: los rope joints solo limitan la distancia MÁXIMA, así que nacen cumplidos y la
+ *    cadena se estira al caer. Una cámara que abre más sube el borde del frustum y alarga los
+ *    tramos, pero el badge no acepta cámaras que dejen ver el anclaje (medio ancho de la correa +
+ *    `BADGE_CAMERA_LIMITS.anchorMargin`) ni `fov` de `BADGE_CAMERA_LIMITS.maxFov` o más, y en ese
+ *    rango siguen por debajo de `segmentLength` (≈ 0.82 en el límite con 25°).
  *
- * Solo vale para la cámara de la lib: un canvas propio con otra cámara tiene otro frustum (la
- * tarjeta se oculta igual durante la carga: la escena no la pinta hasta soltarla).
+ * `camera` va ya resuelta (sin campos opcionales); una `distance` no finita o ≤ 0, o un `fov` fuera
+ * de [`BADGE_CAMERA_LIMITS.minFov`, `BADGE_CAMERA_LIMITS.maxFov`), caen a los de
+ * `BADGE_CAMERA_DEFAULTS`, nunca a `NaN`. Un canvas propio tiene que pasar su cámara a la escena
+ * (`Products3dBadgeScene`, input `camera`) para que esta pose se derive de su frustum; sin ella se
+ * usa la de por defecto.
  */
-export function badgeDropLayout(lateralOffset: number = BADGE_DROP.lateralOffset): BadgeLayout {
-	const [, cameraY, cameraZ] = BADGE_CAMERA.position;
+export function badgeDropLayout(
+	lateralOffset: number = BADGE_DROP.lateralOffset,
+	camera: Readonly<Required<Products3dBadgeCamera>> = BADGE_CAMERA_DEFAULTS,
+): BadgeLayout {
+	const [, cameraY] = BADGE_CAMERA.position;
+	const cameraZ = positiveFiniteOr(camera.distance, BADGE_CAMERA_DEFAULTS.distance);
+	const fov = usableFovOr(camera.fov, BADGE_CAMERA_DEFAULTS.fov);
 	const anchor = BADGE_LAYOUT.fixedPosition;
 	const { bounds } = BADGE_CARD_MODEL;
-	const tanHalfFov = Math.tan((BADGE_CAMERA.fov * Math.PI) / 360);
+	const tanHalfFov = Math.tan((fov * Math.PI) / 360);
 	const farthestDepth = cameraZ - (anchor[2] + bounds.min[2]);
 	const frustumTop = cameraY + farthestDepth * tanHalfFov;
 	const card: [number, number, number] = [

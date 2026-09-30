@@ -79,6 +79,11 @@ Reglas:
 | `member` | `BadgeMemberData` | sí | Datos renderizados en la tarjeta |
 | `theme` | `Products3dBadgeTheme` | no | Fallback: token `PRODUCTS_3D_BADGE_THEME` |
 | `debug` | `boolean` | no | Debug de física |
+| `camera` | `Products3dBadgeCamera` | no | `{ fov?, distance? }`: `fov` vertical en grados (default 25) y distancia de la cámara al badge (default 13). Menos distancia = tarjeta más grande en el mismo contenedor. Valores inválidos → default + aviso dev; si la cámara dejaría ver el anclaje de la correa, la lib acorta `distance` (≈ 16.9 máx. con 25°). Cambiable en caliente, sin repetir la caída |
+
+El badge cuelga **centrado** en su contenedor (desde 0.3.2; antes, desplazado a la derecha). Detalle
+de la cámara, rangos razonables y efecto del `fov` sobre la correa en
+[`projects/ngx-products-3d/README.md`](projects/ngx-products-3d/README.md#cámara-tarjeta-más-grande-sin-agrandar-el-contenedor).
 
 | Output | Tipo | Descripción |
 |---|---|---|

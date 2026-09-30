@@ -225,6 +225,26 @@
         "pnpm build / lint / test / build del playground en verde"
       ],
       "status": "done"
+    },
+    {
+      "id": 12,
+      "name": "badge-center-camera",
+      "title": "Escena centrada por defecto y cámara configurable (0.3.2)",
+      "spec": "hotfix",
+      "phase": 1,
+      "depends_on": [11],
+      "description": "Sergio (2026-09-30): el badge debe quedar centrado en el contenedor (BADGE_LAYOUT pasa de x = 0.5 a x = 0; la caída lateral BADGE_DROP.lateralOffset se conserva) y la cámara (fov y distancia) pasa a ser configurable con un input opcional de Products3dBadge, para agrandar la tarjeta sin agrandar el contenedor. bandRepeatFor y badgeDropLayout deben usar la cámara activa. Versión 0.3.2. Encargo completo en progress/task_center-scene.md.",
+      "acceptance_criteria": [
+        "BADGE_LAYOUT con x = 0 en los cinco cuerpos; lateralOffset intacto",
+        "Input de cámara opcional (fov + distancia) con fallback y warn dev ante valores inválidos",
+        "bandRepeatFor y badgeDropLayout derivan de la cámara activa",
+        "Anclaje de la correa fuera del viewport con la cámara configurada, o decisión documentada",
+        "Cambio de cámara en caliente sin repetir la caída; sin allocations nuevas por frame",
+        "Tests nuevos que fallan con el código actual",
+        "README, JSDoc, CHANGELOG 0.3.2 y package.json 0.3.2; controles de cámara en el playground",
+        "pnpm build / lint / test / build del playground en verde"
+      ],
+      "status": "in_progress"
     }
   ]
 }
